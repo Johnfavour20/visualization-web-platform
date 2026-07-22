@@ -1,0 +1,6 @@
+{
+  "name": "AES Visualization Web Platform",
+  "description": "Interactive step-by-step visualization platform for learning Advanced Encryption Standard (AES) encryption, key expansion, and state matrix transformations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
