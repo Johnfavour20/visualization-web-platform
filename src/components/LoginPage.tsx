@@ -87,7 +87,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
   const handleVerifySuccess = () => {
     setVerificationStatus('success');
     setTimeout(() => {
-      setActiveTab('visualization');
+      setActiveTab('dashboard');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }, 2000);
   };
@@ -145,7 +145,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
           setTimeLeft(60);
           setTimerActive(true);
         } else {
-          setActiveTab('visualization');
+          setActiveTab('dashboard');
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }
       }, 1000);

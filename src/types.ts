@@ -1,4 +1,21 @@
-export type NavigationTab = 'home' | 'basics' | 'visualization' | 'documentation' | 'login';
+export type NavigationTab = 'home' | 'dashboard' | 'basics' | 'visualization' | 'documentation' | 'login' | 'history' | 'details';
+
+export interface SessionRecord {
+  id: string;
+  date: string;
+  timestamp?: string;
+  variant: 'AES-128' | 'AES-192' | 'AES-256';
+  status: 'Completed' | 'In Progress' | 'Draft';
+  duration: string;
+  lastStage: string;
+  plaintext: string;
+  plaintextHex?: string;
+  key: string;
+  keyHex?: string;
+  ciphertextHex?: string;
+  roundsCompleted?: number;
+  totalRounds?: number;
+}
 
 export type AESMode = 'encrypt' | 'decrypt';
 

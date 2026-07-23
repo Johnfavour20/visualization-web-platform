@@ -28,6 +28,8 @@ import {
   Check,
   Zap,
   ArrowRight,
+  ArrowLeft,
+  ChevronsLeft,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
@@ -53,7 +55,10 @@ import {
   BookOpen,
   BarChart2,
   Binary,
-  ExternalLink
+  ExternalLink,
+  Brain,
+  ChevronRight,
+  RefreshCw
 } from 'lucide-react';
 
 export const AESVisualizer: React.FC = () => {
@@ -74,18 +79,35 @@ export const AESVisualizer: React.FC = () => {
   const [isWhyOpen, setIsWhyOpen] = useState<boolean>(true);
   const [isMatrixOpen, setIsMatrixOpen] = useState<boolean>(true);
   const [isKeyExpOpen, setIsKeyExpOpen] = useState<boolean>(true);
-  const [expandedKbItem, setExpandedKbItem] = useState<'hex' | 'matrix' | 'padding' | null>('hex');
+  const [expandedKbItem, setExpandedKbItem] = useState<string | null>('hex');
+
+  // Key Expansion Animation State
+  const [keyExpRound, setKeyExpRound] = useState<number>(0);
+  const [hoveredRoundKey, setHoveredRoundKey] = useState<number | null>(null);
 
   // View Controls
   const [displayFormat, setDisplayFormat] = useState<DisplayFormat>('hex');
-  const [activeTab, setActiveTab] = useState<'trace' | 'keyExpansion'>('trace');
+  const [activeTab, setActiveTab] = useState<'trace' | 'keyExpansion' | 'finalCiphertext'>('trace');
   const [copiedText, setCopiedText] = useState<string | null>(null);
   const [hoveredCell, setHoveredCell] = useState<{ r: number; c: number } | null>(null);
 
   // Trace Step State
   const [currentStepIdx, setCurrentStepIdx] = useState<number>(0);
+  const [activeAddKeyByteIdx, setActiveAddKeyByteIdx] = useState<number>(0);
+  const [activeSubByteIdx, setActiveSubByteIdx] = useState<number>(0);
+  const [activeShiftRowIdx, setActiveShiftRowIdx] = useState<number>(0);
+  const [activeMixColIdx, setActiveMixColIdx] = useState<number>(0);
+  const [showFullSBoxModal, setShowFullSBoxModal] = useState<boolean>(false);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [playSpeedMs, setPlaySpeedMs] = useState<number>(1200);
+
+  // Reset active byte indices on step change
+  useEffect(() => {
+    setActiveAddKeyByteIdx(0);
+    setActiveSubByteIdx(0);
+    setActiveShiftRowIdx(0);
+    setActiveMixColIdx(0);
+  }, [currentStepIdx]);
 
   // Session timer ticker
   useEffect(() => {
@@ -126,18 +148,65 @@ export const AESVisualizer: React.FC = () => {
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if (isPlaying) {
-      timer = setInterval(() => {
-        setCurrentStepIdx((prev) => {
-          if (prev >= trace.steps.length - 1) {
-            setIsPlaying(false);
-            return prev;
+      if (activeTab === 'keyExpansion') {
+        timer = setInterval(() => {
+          setKeyExpRound((prev) => {
+            if (prev >= 10) {
+              setIsPlaying(false);
+              return 10;
+            }
+            return prev + 1;
+          });
+        }, playSpeedMs);
+      } else {
+        const curOp = trace.steps[currentStepIdx]?.operation;
+        timer = setInterval(() => {
+          if (curOp === 'addRoundKey') {
+            setActiveAddKeyByteIdx((prev) => {
+              if (prev >= 15) {
+                setIsPlaying(false);
+                return 15;
+              }
+              return prev + 1;
+            });
+          } else if (curOp === 'subBytes') {
+            setActiveSubByteIdx((prev) => {
+              if (prev >= 15) {
+                setIsPlaying(false);
+                return 15;
+              }
+              return prev + 1;
+            });
+          } else if (curOp === 'shiftRows') {
+            setActiveShiftRowIdx((prev) => {
+              if (prev >= 3) {
+                setIsPlaying(false);
+                return 3;
+              }
+              return prev + 1;
+            });
+          } else if (curOp === 'mixColumns') {
+            setActiveMixColIdx((prev) => {
+              if (prev >= 3) {
+                setIsPlaying(false);
+                return 3;
+              }
+              return prev + 1;
+            });
+          } else {
+            setCurrentStepIdx((prev) => {
+              if (prev >= trace.steps.length - 1) {
+                setIsPlaying(false);
+                return prev;
+              }
+              return prev + 1;
+            });
           }
-          return prev + 1;
-        });
-      }, playSpeedMs);
+        }, playSpeedMs);
+      }
     }
     return () => clearInterval(timer);
-  }, [isPlaying, playSpeedMs, trace.steps.length]);
+  }, [isPlaying, activeTab, playSpeedMs, trace.steps, currentStepIdx]);
 
   const currentStep: StateMatrixStep = trace.steps[currentStepIdx] || trace.steps[0];
 
@@ -399,15 +468,15 @@ export const AESVisualizer: React.FC = () => {
                 </button>
 
                 <button
-                  onClick={() => { setCurrentStepIdx(trace.steps.length - 1); setActiveTab('trace'); }}
+                  onClick={() => { setCurrentStepIdx(trace.steps.length - 1); setActiveTab('finalCiphertext'); }}
                   className={`w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2.5 transition-all cursor-pointer ${
-                    currentStepIdx === trace.steps.length - 1
+                    activeTab === 'finalCiphertext'
                       ? 'bg-[#142380] text-white shadow-xs'
                       : 'text-[#454652] hover:bg-[#f0f3ff] hover:text-[#142380]'
                   }`}
                 >
-                  <Clock className="w-4 h-4" />
-                  <span>History</span>
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>Final Ciphertext</span>
                 </button>
               </div>
 
@@ -419,9 +488,68 @@ export const AESVisualizer: React.FC = () => {
                     <ShieldCheck className="w-3.5 h-3.5 text-[#142380]" />
                     Session Status
                   </span>
-                  <span className="flex items-center gap-1.5 font-bold text-[#005221] bg-[#6bff8f]/20 px-2.5 py-1 rounded-full text-[11px]">
-                    <span className="w-2 h-2 rounded-full bg-[#005221] animate-pulse"></span>
-                    Ready
+                  <span className={`flex items-center gap-1.5 font-bold px-2.5 py-1 rounded-full text-[11px] ${
+                    activeTab === 'finalCiphertext'
+                      ? 'text-[#005221] bg-[#e8f8ee]'
+                      : 'text-[#142380] bg-[#e7eefe]'
+                  }`}>
+                    <span className={`w-2 h-2 rounded-full animate-pulse ${
+                      activeTab === 'finalCiphertext' ? 'bg-[#005221]' : 'bg-[#142380]'
+                    }`}></span>
+                    {activeTab === 'finalCiphertext'
+                      ? 'Completed'
+                      : activeTab === 'keyExpansion'
+                      ? 'Preparing Encryption'
+                      : 'Ready'}
+                  </span>
+                </div>
+
+                {/* Current Stage */}
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-semibold text-[#454652] uppercase tracking-wider text-[10px] flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-[#142380]" />
+                    Current Stage
+                  </span>
+                  <span className="font-bold text-[#142380]">
+                    {activeTab === 'finalCiphertext'
+                      ? 'Final Ciphertext'
+                      : activeTab === 'keyExpansion'
+                      ? 'Key Expansion'
+                      : currentStep.title}
+                  </span>
+                </div>
+
+                {/* Current Round */}
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-semibold text-[#454652] uppercase tracking-wider text-[10px] flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-[#142380]" />
+                    Current Round
+                  </span>
+                  <span className="font-bold text-[#151c27]">
+                    {activeTab === 'finalCiphertext'
+                      ? 'Round 10 (Final)'
+                      : activeTab === 'keyExpansion'
+                      ? 'Preparation'
+                      : `Round ${currentStep.round}`}
+                  </span>
+                </div>
+
+                {/* Overall Progress */}
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-semibold text-[#454652] uppercase tracking-wider text-[10px] flex items-center gap-1.5">
+                    <BarChart2 className="w-3.5 h-3.5 text-[#142380]" />
+                    Overall Progress
+                  </span>
+                  <span className={`font-bold px-2 py-0.5 rounded-md ${
+                    activeTab === 'finalCiphertext'
+                      ? 'text-[#005221] bg-[#e8f8ee]'
+                      : 'text-[#142380] bg-[#e7eefe]'
+                  }`}>
+                    {activeTab === 'finalCiphertext'
+                      ? '100%'
+                      : activeTab === 'keyExpansion'
+                      ? '10%'
+                      : `${Math.round(((currentStepIdx + 1) / trace.steps.length) * 100)}%`}
                   </span>
                 </div>
 
@@ -619,31 +747,54 @@ export const AESVisualizer: React.FC = () => {
               <div className="absolute top-1/2 left-0 w-full h-[2px] bg-[#D9DDE7] -translate-y-1/2 z-0"></div>
 
               {[
-                { id: 1, label: 'Input', icon: CheckCircle2, targetIdx: 0 },
-                { id: 2, label: 'Initialize', icon: CheckCircle2, targetIdx: 1 },
-                { id: 3, label: 'State Matrix', icon: Grid, targetIdx: 2 },
-                { id: 4, label: 'SubBytes', icon: Layers, targetIdx: trace.steps.findIndex(s => s.operation === 'subBytes') >= 0 ? trace.steps.findIndex(s => s.operation === 'subBytes') : 3 },
-                { id: 5, label: 'ShiftRows', icon: BarChart2, targetIdx: trace.steps.findIndex(s => s.operation === 'shiftRows') >= 0 ? trace.steps.findIndex(s => s.operation === 'shiftRows') : 4 }
+                { id: 1, label: 'Input', icon: CheckCircle2, isKeyExp: false, targetIdx: 0 },
+                { id: 2, label: 'Initialize', icon: CheckCircle2, isKeyExp: false, targetIdx: 1 },
+                { id: 3, label: 'Key Expansion', icon: Key, isKeyExp: true, targetIdx: 1 },
+                { id: 4, label: 'State Matrix', icon: Grid, isKeyExp: false, targetIdx: 2 },
+                { id: 5, label: 'SubBytes', icon: Layers, isKeyExp: false, targetIdx: trace.steps.findIndex(s => s.operation === 'subBytes') >= 0 ? trace.steps.findIndex(s => s.operation === 'subBytes') : 3 },
+                { id: 6, label: 'ShiftRows', icon: BarChart2, isKeyExp: false, targetIdx: trace.steps.findIndex(s => s.operation === 'shiftRows') >= 0 ? trace.steps.findIndex(s => s.operation === 'shiftRows') : 4 },
+                { id: 7, label: 'MixColumns', icon: Sparkles, isKeyExp: false, targetIdx: trace.steps.findIndex(s => s.operation === 'mixColumns') >= 0 ? trace.steps.findIndex(s => s.operation === 'mixColumns') : 5 },
+                { id: 8, label: 'AddRoundKey', icon: Key, isKeyExp: false, targetIdx: trace.steps.findIndex(s => s.operation === 'addRoundKey') >= 0 ? trace.steps.findIndex(s => s.operation === 'addRoundKey') : 6 },
+                { id: 9, label: 'Final Cipher', icon: ShieldCheck, isKeyExp: false, isFinalCipher: true, targetIdx: trace.steps.length - 1 }
               ].map((step) => {
-                const isCurrent = (
-                  (step.id === 1 && currentStepIdx === 0) ||
-                  (step.id === 2 && currentStepIdx === 1) ||
-                  (step.id === 3 && currentStepIdx === 2) ||
-                  (step.id === 4 && trace.steps[currentStepIdx]?.operation === 'subBytes') ||
-                  (step.id === 5 && trace.steps[currentStepIdx]?.operation === 'shiftRows')
-                );
-                const isCompleted = (
-                  (step.id === 1 && currentStepIdx > 0) ||
-                  (step.id === 2 && currentStepIdx > 1) ||
-                  (step.id === 3 && currentStepIdx > 2)
-                );
+                const isCurrent = step.isFinalCipher
+                  ? activeTab === 'finalCiphertext'
+                  : step.isKeyExp
+                  ? activeTab === 'keyExpansion'
+                  : activeTab === 'trace' && (
+                      (step.id === 1 && currentStepIdx === 0) ||
+                      (step.id === 2 && currentStepIdx === 1) ||
+                      (step.id === 4 && currentStepIdx === 2) ||
+                      (step.id === 5 && trace.steps[currentStepIdx]?.operation === 'subBytes') ||
+                      (step.id === 6 && trace.steps[currentStepIdx]?.operation === 'shiftRows') ||
+                      (step.id === 7 && trace.steps[currentStepIdx]?.operation === 'mixColumns') ||
+                      (step.id === 8 && trace.steps[currentStepIdx]?.operation === 'addRoundKey')
+                    );
+
+                const isCompleted = activeTab === 'finalCiphertext'
+                  ? step.id < 9
+                  : step.isKeyExp
+                  ? currentStepIdx >= 2 && activeTab === 'trace'
+                  : (
+                      (step.id === 1 && (currentStepIdx > 0 || activeTab === 'keyExpansion')) ||
+                      (step.id === 2 && (currentStepIdx > 1 || activeTab === 'keyExpansion')) ||
+                      (step.id === 4 && currentStepIdx > 2) ||
+                      (step.id < 9 && currentStepIdx === trace.steps.length - 1)
+                    );
 
                 const StepIcon = step.icon;
 
                 return (
                   <div key={step.id} className="relative z-10 flex flex-col items-center group cursor-pointer" onClick={() => {
-                    setCurrentStepIdx(step.targetIdx);
-                    setActiveTab('trace');
+                    if (step.isKeyExp) {
+                      setActiveTab('keyExpansion');
+                    } else if (step.isFinalCipher) {
+                      setCurrentStepIdx(step.targetIdx);
+                      setActiveTab('finalCiphertext');
+                    } else {
+                      setCurrentStepIdx(step.targetIdx);
+                      setActiveTab('trace');
+                    }
                   }}>
                     <div
                       className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs transition-all shadow-sm ${
@@ -1165,10 +1316,10 @@ export const AESVisualizer: React.FC = () => {
                     </button>
 
                     <button
-                      onClick={() => setCurrentStepIdx(2)}
+                      onClick={() => setActiveTab('keyExpansion')}
                       className="w-full sm:w-auto px-6 py-3 bg-[#142380] hover:bg-[#2f3c97] text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
                     >
-                      <span>Continue to Initial State Matrix</span>
+                      <span>Continue to Key Expansion</span>
                       <ArrowRight className="w-4 h-4" />
                     </button>
                   </div>
@@ -1452,7 +1603,1771 @@ export const AESVisualizer: React.FC = () => {
               </div>
 
               {/* Grid Layout: State Matrix (Left) + Math Breakdown (Right) */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {currentStep.operation === 'shiftRows' ? (() => {
+                const inputMatrix = currentStep.prevState || currentStep.state;
+                const outputMatrix = currentStep.state;
+
+                return (
+                  <div className="space-y-6">
+                    {/* Header Title & Subtitle */}
+                    <div className="space-y-1">
+                      <h1 className="text-2xl font-extrabold text-[#151c27] tracking-tight">
+                        ShiftRows Transformation
+                      </h1>
+                      <p className="text-xs text-[#767683] max-w-3xl">
+                        AES cyclically shifts each row of the State Matrix to the left to increase diffusion. This ensures that bytes from the same column are distributed across different columns.
+                      </p>
+                    </div>
+
+                    {/* Top 3-Panel Row: BEFORE SHIFTROWS | CYCLIC SHIFT ANIMATION | AFTER SHIFTROWS */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+                      
+                      {/* Panel 1: BEFORE SHIFTROWS */}
+                      <div className="lg:col-span-3 bg-white p-5 rounded-3xl border border-[#D9DDE7] shadow-xs flex flex-col justify-between space-y-4">
+                        <div className="text-center">
+                          <span className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider">
+                            BEFORE SHIFTROWS
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-1.5 p-2 bg-[#F7F8FC] rounded-2xl border border-[#D9DDE7] my-auto">
+                          {Array.from({ length: 4 }).map((_, r) =>
+                            Array.from({ length: 4 }).map((_, c) => {
+                              const val = inputMatrix[r][c];
+                              const isActiveRow = r === activeShiftRowIdx;
+
+                              return (
+                                <div
+                                  key={`before-sr-${r}-${c}`}
+                                  onClick={() => setActiveShiftRowIdx(r)}
+                                  className={`aspect-square rounded-xl text-xs font-mono font-extrabold flex items-center justify-center cursor-pointer transition-all ${
+                                    isActiveRow
+                                      ? 'border-2 border-[#142380] bg-[#f0f3ff] text-[#142380] shadow-2xs'
+                                      : 'bg-white text-[#151c27] border border-[#D9DDE7] hover:bg-[#F7F8FC]'
+                                  }`}
+                                >
+                                  {val.toString(16).padStart(2, '0').toUpperCase()}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+
+                        <div className="text-center text-[11px] font-medium text-[#767683]">
+                          Processing: Row {activeShiftRowIdx}
+                        </div>
+                      </div>
+
+                      {/* Panel 2: CYCLIC ROW SHIFT ANIMATION */}
+                      <div className="lg:col-span-6 bg-white p-5 rounded-3xl border border-[#D9DDE7] shadow-xs flex flex-col justify-between space-y-4">
+                        <div className="text-center">
+                          <span className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider">
+                            CYCLIC ROW SHIFT ANIMATION
+                          </span>
+                        </div>
+
+                        <div className="space-y-3 my-auto py-2">
+                          {/* Row 0 */}
+                          <div
+                            onClick={() => setActiveShiftRowIdx(0)}
+                            className={`p-2.5 rounded-2xl border transition-all cursor-pointer flex flex-col sm:flex-row items-center justify-between gap-2 ${
+                              activeShiftRowIdx === 0
+                                ? 'bg-[#f0f3ff] border-[#142380] shadow-2xs'
+                                : 'bg-[#F7F8FC] border-[#D9DDE7] hover:bg-[#e7eefe]'
+                            }`}
+                          >
+                            <span className="text-xs font-extrabold text-[#767683] w-28 text-left">
+                              Row 0 (No Shift)
+                            </span>
+                            <div className="flex gap-2">
+                              {[0, 1, 2, 3].map((c) => (
+                                <div
+                                  key={`r0-c${c}`}
+                                  className="w-11 h-11 rounded-xl bg-white border border-[#D9DDE7] flex items-center justify-center font-mono font-extrabold text-xs text-[#151c27] shadow-2xs"
+                                >
+                                  {inputMatrix[0][c].toString(16).padStart(2, '0').toUpperCase()}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Row 1 */}
+                          <div
+                            onClick={() => setActiveShiftRowIdx(1)}
+                            className={`p-2.5 rounded-2xl border transition-all cursor-pointer flex flex-col sm:flex-row items-center justify-between gap-2 ${
+                              activeShiftRowIdx === 1
+                                ? 'bg-[#f0f3ff] border-[#142380] shadow-2xs'
+                                : 'bg-[#F7F8FC] border-[#D9DDE7] hover:bg-[#e7eefe]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5 w-28">
+                              <span className="text-xs font-extrabold text-[#142380]">
+                                Row 1 (Shift 1)
+                              </span>
+                              <ArrowLeft className="w-3.5 h-3.5 text-[#142380]" />
+                            </div>
+                            <div className="flex gap-2">
+                              {[1, 2, 3, 0].map((cIdx, pos) => {
+                                const val = inputMatrix[1][cIdx];
+                                const isWrapped = pos === 3;
+                                return (
+                                  <div
+                                    key={`r1-pos${pos}`}
+                                    className={`w-11 h-11 rounded-xl flex items-center justify-center font-mono font-extrabold text-xs shadow-2xs transition-all ${
+                                      isWrapped
+                                        ? 'bg-[#ffdbc9] border-2 border-[#ff9a5b] text-[#96490d]'
+                                        : 'bg-[#142380] text-white'
+                                    }`}
+                                  >
+                                    {val.toString(16).padStart(2, '0').toUpperCase()}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Row 2 */}
+                          <div
+                            onClick={() => setActiveShiftRowIdx(2)}
+                            className={`p-2.5 rounded-2xl border transition-all cursor-pointer flex flex-col sm:flex-row items-center justify-between gap-2 ${
+                              activeShiftRowIdx === 2
+                                ? 'bg-[#f0f3ff] border-[#142380] shadow-2xs'
+                                : 'bg-[#F7F8FC] border-[#D9DDE7] hover:bg-[#e7eefe]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5 w-28">
+                              <span className="text-xs font-extrabold text-[#142380]">
+                                Row 2 (Shift 2)
+                              </span>
+                              <ChevronsLeft className="w-3.5 h-3.5 text-[#142380]" />
+                            </div>
+                            <div className="flex gap-2">
+                              {[2, 3, 0, 1].map((cIdx, pos) => {
+                                const val = inputMatrix[2][cIdx];
+                                const isWrapped = pos >= 2;
+                                return (
+                                  <div
+                                    key={`r2-pos${pos}`}
+                                    className={`w-11 h-11 rounded-xl flex items-center justify-center font-mono font-extrabold text-xs shadow-2xs transition-all ${
+                                      isWrapped
+                                        ? 'bg-[#ffdbc9] border-2 border-[#ff9a5b] text-[#96490d]'
+                                        : 'bg-[#142380] text-white'
+                                    }`}
+                                  >
+                                    {val.toString(16).padStart(2, '0').toUpperCase()}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Row 3 */}
+                          <div
+                            onClick={() => setActiveShiftRowIdx(3)}
+                            className={`p-2.5 rounded-2xl border transition-all cursor-pointer flex flex-col sm:flex-row items-center justify-between gap-2 ${
+                              activeShiftRowIdx === 3
+                                ? 'bg-[#f0f3ff] border-[#142380] shadow-2xs'
+                                : 'bg-[#F7F8FC] border-[#D9DDE7] hover:bg-[#e7eefe]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5 w-28">
+                              <span className="text-xs font-extrabold text-[#142380]">
+                                Row 3 (Shift 3)
+                              </span>
+                              <ChevronsLeft className="w-3.5 h-3.5 text-[#142380]" />
+                            </div>
+                            <div className="flex gap-2">
+                              {[3, 0, 1, 2].map((cIdx, pos) => {
+                                const val = inputMatrix[3][cIdx];
+                                const isWrapped = pos >= 1;
+                                return (
+                                  <div
+                                    key={`r3-pos${pos}`}
+                                    className={`w-11 h-11 rounded-xl flex items-center justify-center font-mono font-extrabold text-xs shadow-2xs transition-all ${
+                                      isWrapped
+                                        ? 'bg-[#ffdbc9] border-2 border-[#ff9a5b] text-[#96490d]'
+                                        : 'bg-[#142380] text-white'
+                                    }`}
+                                  >
+                                    {val.toString(16).padStart(2, '0').toUpperCase()}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-center text-[11px] font-extrabold text-[#142380]">
+                          Click a row to inspect shift behavior
+                        </div>
+                      </div>
+
+                      {/* Panel 3: AFTER SHIFTROWS */}
+                      <div className="lg:col-span-3 bg-white p-5 rounded-3xl border border-[#D9DDE7] shadow-xs flex flex-col justify-between space-y-4">
+                        <div className="text-center">
+                          <span className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider">
+                            AFTER SHIFTROWS
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-1.5 p-2 bg-[#F7F8FC] rounded-2xl border border-[#D9DDE7] my-auto">
+                          {Array.from({ length: 4 }).map((_, r) =>
+                            Array.from({ length: 4 }).map((_, c) => {
+                              const val = outputMatrix[r][c];
+                              const isProc = r <= activeShiftRowIdx;
+                              const isActRow = r === activeShiftRowIdx;
+
+                              return (
+                                <div
+                                  key={`after-sr-${r}-${c}`}
+                                  onClick={() => setActiveShiftRowIdx(r)}
+                                  className={`aspect-square rounded-xl text-xs font-mono font-extrabold flex items-center justify-center cursor-pointer transition-all ${
+                                    isActRow
+                                      ? 'border-2 border-[#ff9a5b] bg-[#fff5ef] text-[#96490d] shadow-2xs'
+                                      : isProc
+                                      ? 'bg-[#f0f3ff] text-[#142380] border border-[#dce2f3]'
+                                      : 'bg-white text-[#c6c5d4] border border-dashed border-[#D9DDE7]'
+                                  }`}
+                                >
+                                  {isProc ? val.toString(16).padStart(2, '0').toUpperCase() : '--'}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+
+                        <div className="text-center text-[11px] font-extrabold text-[#142380]">
+                          Row {activeShiftRowIdx + 1}/4 Processed
+                        </div>
+                      </div>
+
+                    </div>
+
+                    {/* Middle Row: Live Detail / Shift Specs + Controls */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+                      
+                      {/* Left: Shift Rules & Live Detail */}
+                      <div className="lg:col-span-9 bg-white p-5 rounded-3xl border border-[#D9DDE7] shadow-xs flex flex-col justify-between space-y-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center divide-x divide-[#f0f3ff]">
+                          <div className={`p-2 rounded-2xl transition-all ${activeShiftRowIdx === 0 ? 'bg-[#f0f3ff]' : ''}`}>
+                            <div className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider mb-1">
+                              ROW 0
+                            </div>
+                            <div className="text-sm font-mono font-extrabold text-[#142380]">
+                              No Shift (0)
+                            </div>
+                            <div className="text-[10px] text-[#767683] mt-1 font-medium">
+                              Positions unchanged
+                            </div>
+                          </div>
+
+                          <div className={`p-2 rounded-2xl transition-all ${activeShiftRowIdx === 1 ? 'bg-[#f0f3ff]' : ''}`}>
+                            <div className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider mb-1">
+                              ROW 1
+                            </div>
+                            <div className="text-sm font-mono font-extrabold text-[#142380]">
+                              Shift 1 Left
+                            </div>
+                            <div className="text-[10px] text-[#96490d] mt-1 font-extrabold">
+                              Byte 0 → Col 3
+                            </div>
+                          </div>
+
+                          <div className={`p-2 rounded-2xl transition-all ${activeShiftRowIdx === 2 ? 'bg-[#f0f3ff]' : ''}`}>
+                            <div className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider mb-1">
+                              ROW 2
+                            </div>
+                            <div className="text-sm font-mono font-extrabold text-[#142380]">
+                              Shift 2 Left
+                            </div>
+                            <div className="text-[10px] text-[#96490d] mt-1 font-extrabold">
+                              Bytes 0,1 → Col 2,3
+                            </div>
+                          </div>
+
+                          <div className={`p-2 rounded-2xl transition-all ${activeShiftRowIdx === 3 ? 'bg-[#f0f3ff]' : ''}`}>
+                            <div className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider mb-1">
+                              ROW 3
+                            </div>
+                            <div className="text-sm font-mono font-extrabold text-[#142380]">
+                              Shift 3 Left
+                            </div>
+                            <div className="text-[10px] text-[#96490d] mt-1 font-extrabold">
+                              Bytes 0,1,2 → Col 1,2,3
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="pt-3 border-t border-[#f0f3ff] text-center text-xs text-[#454652] font-medium">
+                          Diffusion Principle: Bytes from column <span className="font-bold text-[#142380]">C{activeShiftRowIdx}</span> are now distributed across 4 distinct columns!
+                        </div>
+                      </div>
+
+                      {/* Right: Controls Card */}
+                      <div className="lg:col-span-3 bg-white p-5 rounded-3xl border border-[#D9DDE7] shadow-xs flex items-center justify-center gap-3">
+                        <button
+                          onClick={() => setActiveShiftRowIdx((prev) => Math.max(0, prev - 1))}
+                          disabled={activeShiftRowIdx === 0}
+                          className="p-3.5 rounded-2xl bg-[#F7F8FC] border border-[#D9DDE7] hover:bg-[#e7eefe] text-[#151c27] disabled:opacity-40 transition-all cursor-pointer"
+                          title="Previous Row"
+                        >
+                          <SkipBack className="w-5 h-5" />
+                        </button>
+
+                        <button
+                          onClick={() => setIsPlaying(!isPlaying)}
+                          className="p-4 rounded-2xl bg-[#142380] text-white hover:bg-[#2f3c97] shadow-sm transition-all cursor-pointer"
+                          title={isPlaying ? 'Pause' : 'Play'}
+                        >
+                          {isPlaying ? <Pause className="w-5 h-5 fill-white" /> : <Play className="w-5 h-5 fill-white" />}
+                        </button>
+
+                        <button
+                          onClick={() => setActiveShiftRowIdx((prev) => Math.min(3, prev + 1))}
+                          disabled={activeShiftRowIdx === 3}
+                          className="p-3.5 rounded-2xl bg-[#F7F8FC] border border-[#D9DDE7] hover:bg-[#e7eefe] text-[#151c27] disabled:opacity-40 transition-all cursor-pointer"
+                          title="Next Row"
+                        >
+                          <SkipForward className="w-5 h-5" />
+                        </button>
+
+                        <button
+                          onClick={() => { setIsPlaying(false); setActiveShiftRowIdx(0); }}
+                          className="p-3.5 rounded-2xl bg-[#F7F8FC] border border-[#D9DDE7] hover:bg-[#e7eefe] text-[#767683] transition-all cursor-pointer"
+                          title="Reset"
+                        >
+                          <RotateCcw className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                    </div>
+
+                    {/* Bottom Row: Educational Box + Learning Hub */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+                      
+                      {/* Left: Why ShiftRows? Card */}
+                      <div className="lg:col-span-8 bg-white p-6 rounded-3xl border border-[#D9DDE7] shadow-xs space-y-3 flex flex-col justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-2xl bg-[#f0f3ff] text-[#142380] flex items-center justify-center shrink-0">
+                            <Brain className="w-5 h-5" />
+                          </div>
+                          <h2 className="text-lg font-extrabold text-[#151c27]">
+                            Why ShiftRows?
+                          </h2>
+                        </div>
+
+                        <p className="text-xs text-[#454652] leading-relaxed">
+                          This step creates <strong className="font-extrabold text-[#142380]">Diffusion</strong> by ensuring that each column of the input state is spread across four columns of the output state. Combined with MixColumns, this guarantees that every byte of the final ciphertext depends on every byte of the initial plaintext (the Avalanche Effect).
+                        </p>
+                      </div>
+
+                      {/* Right: Learning Hub Card */}
+                      <div className="lg:col-span-4 bg-[#142380] text-white p-6 rounded-3xl shadow-md space-y-4 flex flex-col justify-between">
+                        <h3 className="text-base font-extrabold text-white tracking-tight">
+                          Learning Hub
+                        </h3>
+
+                        <div className="space-y-2.5">
+                          {[
+                            'What is Diffusion?',
+                            'Why Rows Are Shifted',
+                            'Why Row 0 Does Not Move',
+                            'Preparing for MixColumns'
+                          ].map((item, idx) => (
+                            <button
+                              key={`sr-hub-${idx}`}
+                              className="w-full bg-white/10 hover:bg-white/20 text-white rounded-2xl p-3 flex items-center justify-between text-xs font-bold transition-all cursor-pointer border border-white/10"
+                            >
+                              <span>{item}</span>
+                              <ChevronRight className="w-4 h-4 text-white/80" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                    </div>
+
+                    {/* ShiftRows Complete Banner */}
+                    <div className="bg-[#e8f8ee] border-2 border-[#10b981] rounded-3xl p-6 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-2xl bg-[#10b981] text-white flex items-center justify-center shrink-0">
+                          <CheckCircle2 className="w-7 h-7" />
+                        </div>
+                        <div>
+                          <h3 className="text-base font-extrabold text-[#151c27]">
+                            ShiftRows Completed for Round {currentStep.round}
+                          </h3>
+                          <p className="text-xs text-[#454652] mt-0.5">
+                            All 4 rows cyclically shifted! State matrix diffusion achieved. Ready for MixColumns.
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          const nextIdx = trace.steps.findIndex(
+                            (s, idx) => idx > currentStepIdx && s.operation === 'mixColumns'
+                          );
+                          if (nextIdx !== -1) {
+                            setCurrentStepIdx(nextIdx);
+                          } else if (currentStepIdx < trace.steps.length - 1) {
+                            setCurrentStepIdx(currentStepIdx + 1);
+                          }
+                        }}
+                        className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-[#142380] hover:bg-[#2f3c97] text-white font-extrabold text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer shrink-0"
+                      >
+                        <span>Continue to MixColumns</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                  </div>
+                );
+              })() : currentStep.operation === 'subBytes' ? (() => {
+                const curRow = activeSubByteIdx % 4;
+                const curCol = Math.floor(activeSubByteIdx / 4);
+                const inputMatrix = currentStep.prevState || currentStep.state;
+                const outputMatrix = currentStep.state;
+                const curSourceByte = inputMatrix[curRow]?.[curCol] ?? 0;
+                const rowNibble = (curSourceByte >> 4) & 0x0F;
+                const colNibble = curSourceByte & 0x0F;
+                const substitutedByte = SBOX[curSourceByte] ?? outputMatrix[curRow]?.[curCol] ?? 0;
+
+                const curSourceByteHex = curSourceByte.toString(16).padStart(2, '0').toUpperCase();
+                const substitutedByteHex = substitutedByte.toString(16).padStart(2, '0').toUpperCase();
+                const rowNibbleBinary = rowNibble.toString(2).padStart(4, '0');
+                const colNibbleBinary = colNibble.toString(2).padStart(4, '0');
+                const outputAscii = (substitutedByte >= 32 && substitutedByte <= 126) ? String.fromCharCode(substitutedByte) : (curSourceByte >= 32 && curSourceByte <= 126 ? String.fromCharCode(curSourceByte) : 'R');
+
+                return (
+                  <div className="space-y-6">
+                    {/* Header Title & Subtitle */}
+                    <div className="space-y-1">
+                      <h1 className="text-2xl font-extrabold text-[#151c27] tracking-tight">
+                        SubBytes Transformation
+                      </h1>
+                      <p className="text-xs text-[#767683] max-w-3xl">
+                        Each byte in the State Matrix is replaced using the AES Substitution Box (S-Box) to introduce confusion through non-linear substitution.
+                      </p>
+                    </div>
+
+                    {/* Top 3-Panel Row: ORIGINAL STATE MATRIX | S-BOX LOOKUP LENS | UPDATED STATE MATRIX */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+                      
+                      {/* Panel 1: ORIGINAL STATE MATRIX */}
+                      <div className="lg:col-span-3 bg-white p-5 rounded-3xl border border-[#D9DDE7] shadow-xs flex flex-col justify-between space-y-4">
+                        <div className="text-center">
+                          <span className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider">
+                            ORIGINAL STATE MATRIX
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-1.5 p-2 bg-[#F7F8FC] rounded-2xl border border-[#D9DDE7] my-auto">
+                          {Array.from({ length: 4 }).map((_, r) =>
+                            Array.from({ length: 4 }).map((_, c) => {
+                              const bIdx = c * 4 + r;
+                              const val = inputMatrix[r][c];
+                              const isCur = bIdx === activeSubByteIdx;
+
+                              return (
+                                <div
+                                  key={`orig-sb-${r}-${c}`}
+                                  onClick={() => setActiveSubByteIdx(bIdx)}
+                                  className={`aspect-square rounded-xl text-xs font-mono font-extrabold flex items-center justify-center cursor-pointer transition-all ${
+                                    isCur
+                                      ? 'border-2 border-[#ff9a5b] bg-[#fff5ef] text-[#96490d] shadow-2xs scale-105'
+                                      : 'bg-white text-[#151c27] border border-[#D9DDE7] hover:bg-[#f0f3ff]'
+                                  }`}
+                                >
+                                  0x{val.toString(16).padStart(2, '0').toUpperCase()}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+
+                        <div className="text-center text-[11px] font-medium text-[#767683]">
+                          Processing: Row {curRow}, Col {curCol}
+                        </div>
+                      </div>
+
+                      {/* Panel 2: S-BOX LOOKUP LENS */}
+                      <div className="lg:col-span-6 bg-white p-6 rounded-3xl border border-[#D9DDE7] shadow-xs flex flex-col justify-between space-y-4 text-center relative overflow-hidden">
+                        <span className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider">
+                          S-BOX LOOKUP LENS
+                        </span>
+
+                        <div className="flex items-center justify-center gap-4 sm:gap-6 my-auto py-4">
+                          {/* Left Input Box */}
+                          <div className="flex flex-col items-center">
+                            <div className="w-20 h-20 rounded-2xl bg-[#142380] text-white flex items-center justify-center font-mono font-extrabold text-xl shadow-md">
+                              0x{curSourceByteHex}
+                            </div>
+                            <div className="flex gap-1.5 mt-3">
+                              <span className="bg-[#F7F8FC] border border-[#D9DDE7] text-[#767683] text-[10px] font-extrabold px-2 py-0.5 rounded-md">
+                                Row: {rowNibble}
+                              </span>
+                              <span className="bg-[#F7F8FC] border border-[#D9DDE7] text-[#767683] text-[10px] font-extrabold px-2 py-0.5 rounded-md">
+                                Col: {colNibble}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Center S-Box Lens Icon & Arrow */}
+                          <div className="flex items-center gap-2">
+                            <div className="w-14 h-14 rounded-full border-2 border-[#142380] text-[#142380] flex flex-col items-center justify-center bg-[#f0f3ff] shadow-2xs">
+                              <RefreshCw className="w-4 h-4 text-[#142380]" />
+                              <span className="text-[8px] font-extrabold text-[#142380] uppercase tracking-tighter">S-BOX</span>
+                            </div>
+                            <ArrowRight className="w-5 h-5 text-[#142380]" />
+                          </div>
+
+                          {/* Right Output Box */}
+                          <div className="flex flex-col items-center">
+                            <div className="w-20 h-20 rounded-2xl bg-[#ffdbc9] border-2 border-[#ff9a5b] text-[#96490d] flex items-center justify-center font-mono font-extrabold text-xl shadow-md">
+                              0x{substitutedByteHex}
+                            </div>
+                            <div className="mt-3">
+                              <span className="bg-[#ffdbc9] text-[#96490d] text-[10px] font-extrabold px-2.5 py-1 rounded-md">
+                                Result: 0x{substitutedByteHex}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Interactive Full Table Trigger */}
+                        <div className="pt-2 border-t border-[#f0f3ff]">
+                          <button
+                            onClick={() => setShowFullSBoxModal(true)}
+                            className="text-xs font-bold text-[#142380] hover:underline cursor-pointer inline-flex items-center gap-1.5"
+                          >
+                            <Grid className="w-3.5 h-3.5" />
+                            <span>View Full S-Box Table Grid</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Panel 3: UPDATED STATE MATRIX */}
+                      <div className="lg:col-span-3 bg-white p-5 rounded-3xl border border-[#D9DDE7] shadow-xs flex flex-col justify-between space-y-4">
+                        <div className="text-center">
+                          <span className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider">
+                            UPDATED STATE MATRIX
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-1.5 p-2 bg-[#F7F8FC] rounded-2xl border border-[#D9DDE7] my-auto">
+                          {Array.from({ length: 4 }).map((_, r) =>
+                            Array.from({ length: 4 }).map((_, c) => {
+                              const bIdx = c * 4 + r;
+                              const isProc = bIdx <= activeSubByteIdx;
+                              const isCur = bIdx === activeSubByteIdx;
+                              const val = outputMatrix[r][c];
+
+                              return (
+                                <div
+                                  key={`upd-sb-${r}-${c}`}
+                                  onClick={() => setActiveSubByteIdx(bIdx)}
+                                  className={`aspect-square rounded-xl text-xs font-mono font-extrabold flex items-center justify-center cursor-pointer transition-all ${
+                                    isCur
+                                      ? 'border-2 border-[#ff9a5b] bg-[#fff5ef] text-[#96490d] shadow-2xs scale-105'
+                                      : isProc
+                                      ? 'bg-[#f0f3ff] text-[#142380] border border-[#dce2f3]'
+                                      : 'bg-white text-[#c6c5d4] border border-dashed border-[#D9DDE7]'
+                                  }`}
+                                >
+                                  {isProc ? `0x${val.toString(16).padStart(2, '0').toUpperCase()}` : '--'}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+
+                        <div className="text-center text-[11px] font-extrabold text-[#142380]">
+                          {activeSubByteIdx + 1}/16 Bytes Processed
+                        </div>
+                      </div>
+
+                    </div>
+
+                    {/* Middle Row: Math Breakdown Card (Left) + Player Controls (Right) */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+                      
+                      {/* Left: Math & Binary Mapping Card */}
+                      <div className="lg:col-span-9 bg-white p-5 rounded-3xl border border-[#D9DDE7] shadow-xs flex flex-col justify-between space-y-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center divide-x divide-[#f0f3ff]">
+                          <div className="p-2">
+                            <div className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider mb-1">
+                              ORIGINAL HEX
+                            </div>
+                            <div className="text-base font-mono font-extrabold text-[#142380]">
+                              0x{curSourceByteHex}
+                            </div>
+                          </div>
+
+                          <div className="p-2">
+                            <div className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider mb-1">
+                              BINARY MAPPING
+                            </div>
+                            <div className="text-base font-mono font-extrabold">
+                              <span className="text-[#142380]">{rowNibbleBinary}</span>{' '}
+                              <span className="text-[#96490d]">{colNibbleBinary}</span>
+                            </div>
+                          </div>
+
+                          <div className="p-2">
+                            <div className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider mb-1">
+                              S-BOX (ROW, COL)
+                            </div>
+                            <div className="text-base font-mono font-extrabold text-[#151c27]">
+                              Row {rowNibble}, Col {colNibble}
+                            </div>
+                          </div>
+
+                          <div className="p-2">
+                            <div className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider mb-1">
+                              OUTPUT HEX
+                            </div>
+                            <div className="text-base font-mono font-extrabold text-[#96490d]">
+                              0x{substitutedByteHex}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="pt-3 border-t border-[#f0f3ff] text-center">
+                          <span className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider mr-2">
+                            ASCII RESULT
+                          </span>
+                          <span className="text-sm font-mono font-extrabold text-[#151c27]">
+                            "{outputAscii}"
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Right: Player Controls Card */}
+                      <div className="lg:col-span-3 bg-white p-5 rounded-3xl border border-[#D9DDE7] shadow-xs flex items-center justify-center gap-3">
+                        <button
+                          onClick={() => setActiveSubByteIdx((prev) => Math.max(0, prev - 1))}
+                          disabled={activeSubByteIdx === 0}
+                          className="p-3.5 rounded-2xl bg-[#F7F8FC] border border-[#D9DDE7] hover:bg-[#e7eefe] text-[#151c27] disabled:opacity-40 transition-all cursor-pointer"
+                          title="Previous Byte"
+                        >
+                          <SkipBack className="w-5 h-5" />
+                        </button>
+
+                        <button
+                          onClick={() => setIsPlaying(!isPlaying)}
+                          className="p-4 rounded-2xl bg-[#142380] text-white hover:bg-[#2f3c97] shadow-sm transition-all cursor-pointer"
+                          title={isPlaying ? 'Pause' : 'Play'}
+                        >
+                          {isPlaying ? <Pause className="w-5 h-5 fill-white" /> : <Play className="w-5 h-5 fill-white" />}
+                        </button>
+
+                        <button
+                          onClick={() => setActiveSubByteIdx((prev) => Math.min(15, prev + 1))}
+                          disabled={activeSubByteIdx === 15}
+                          className="p-3.5 rounded-2xl bg-[#F7F8FC] border border-[#D9DDE7] hover:bg-[#e7eefe] text-[#151c27] disabled:opacity-40 transition-all cursor-pointer"
+                          title="Next Byte"
+                        >
+                          <SkipForward className="w-5 h-5" />
+                        </button>
+
+                        <button
+                          onClick={() => { setIsPlaying(false); setActiveSubByteIdx(0); }}
+                          className="p-3.5 rounded-2xl bg-[#F7F8FC] border border-[#D9DDE7] hover:bg-[#e7eefe] text-[#767683] transition-all cursor-pointer"
+                          title="Reset"
+                        >
+                          <RotateCcw className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                    </div>
+
+                    {/* Bottom Row: Educational Box (Left) + Learning Hub (Right) */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+                      
+                      {/* Left: Why SubBytes? Card */}
+                      <div className="lg:col-span-8 bg-white p-6 rounded-3xl border border-[#D9DDE7] shadow-xs space-y-3 flex flex-col justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-2xl bg-[#f0f3ff] text-[#142380] flex items-center justify-center shrink-0">
+                            <Brain className="w-5 h-5" />
+                          </div>
+                          <h2 className="text-lg font-extrabold text-[#151c27]">
+                            Why SubBytes?
+                          </h2>
+                        </div>
+
+                        <p className="text-xs text-[#454652] leading-relaxed">
+                          SubBytes is the only non-linear transformation in AES. By using the S-Box, we ensure that the relationship between the plaintext and the ciphertext is complex. This principle, known as <strong className="font-extrabold text-[#142380]">Confusion</strong>, prevents attackers from using simple mathematical models to reverse the encryption. The S-Box is specially constructed based on the multiplicative inverse in GF(2⁸) followed by an affine transformation to resist linear and differential cryptanalysis.
+                        </p>
+                      </div>
+
+                      {/* Right: Learning Hub Card */}
+                      <div className="lg:col-span-4 bg-[#142380] text-white p-6 rounded-3xl shadow-md space-y-4 flex flex-col justify-between">
+                        <h3 className="text-base font-extrabold text-white tracking-tight">
+                          Learning Hub
+                        </h3>
+
+                        <div className="space-y-2.5">
+                          {[
+                            'What is the AES S-Box?',
+                            'Understanding Confusion',
+                            'Math behind S-Box'
+                          ].map((item, idx) => (
+                            <button
+                              key={`hub-item-${idx}`}
+                              onClick={() => setShowFullSBoxModal(true)}
+                              className="w-full bg-white/10 hover:bg-white/20 text-white rounded-2xl p-3.5 flex items-center justify-between text-xs font-bold transition-all cursor-pointer border border-white/10"
+                            >
+                              <span>{item}</span>
+                              <ChevronRight className="w-4 h-4 text-white/80" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                    </div>
+
+                    {/* SubBytes Phase Complete Banner */}
+                    {activeSubByteIdx === 15 && (
+                      <div className="bg-[#e8f8ee] border-2 border-[#10b981] rounded-3xl p-6 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-2xl bg-[#10b981] text-white flex items-center justify-center shrink-0">
+                            <CheckCircle2 className="w-7 h-7" />
+                          </div>
+                          <div>
+                            <h3 className="text-base font-extrabold text-[#065f46]">
+                              SubBytes Complete for Round {currentStep.round}
+                            </h3>
+                            <p className="text-xs text-[#047857] mt-0.5">
+                              All 16 bytes in the state matrix have been substituted through the S-Box table.
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            const nextIdx = trace.steps.findIndex((s, idx) => idx > currentStepIdx && s.operation === 'shiftRows');
+                            if (nextIdx >= 0) {
+                              setCurrentStepIdx(nextIdx);
+                            } else if (currentStepIdx < trace.steps.length - 1) {
+                              setCurrentStepIdx(currentStepIdx + 1);
+                            }
+                          }}
+                          className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-[#142380] hover:bg-[#2f3c97] text-white font-extrabold text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer shrink-0"
+                        >
+                          <span>Continue to ShiftRows</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })() : currentStep.operation === 'addRoundKey' ? (() => {
+                const curRow = activeAddKeyByteIdx % 4;
+                const curCol = Math.floor(activeAddKeyByteIdx / 4);
+                const inputMatrix = currentStep.prevState || currentStep.state;
+                const keyMatrix = currentStep.roundKey || Array.from({ length: 4 }, () => [0, 0, 0, 0]);
+                const curStateByte = inputMatrix[curRow]?.[curCol] ?? 0;
+                const curKeyByte = keyMatrix[curRow]?.[curCol] ?? 0;
+                const curResultByte = curStateByte ^ curKeyByte;
+                const outputMatrix = currentStep.state;
+
+                return (
+                  <div className="space-y-6">
+                    {/* Top Header Banner */}
+                    <div className="bg-white p-5 rounded-3xl border border-[#D9DDE7] shadow-2xs">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="bg-[#ffdbc9] text-[#96490d] text-xs font-extrabold px-3 py-1 rounded-full uppercase tracking-wider">
+                              Step {currentStep.round === 0 ? '1' : '8'}: Key Addition
+                            </span>
+                            <h2 className="text-sm font-extrabold text-[#454652] tracking-wider uppercase">
+                              ADDROUNDKEY TRANSFORMATION
+                            </h2>
+                          </div>
+                          <p className="text-xs text-[#767683] max-w-2xl">
+                            The final transformation of the round. In this step, the 128-bit state is combined with a 128-bit subkey using a bitwise XOR operation.
+                          </p>
+                        </div>
+
+                        {/* Top-right controls */}
+                        <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                          <button
+                            onClick={() => { setIsPlaying(false); setActiveAddKeyByteIdx(0); }}
+                            className="p-2 rounded-xl bg-[#f0f3ff] text-[#142380] hover:bg-[#e7eefe] transition-colors cursor-pointer"
+                            title="Reset Byte"
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setIsPlaying(!isPlaying)}
+                            className="p-2 rounded-xl bg-[#142380] text-white hover:bg-[#2f3c97] transition-colors cursor-pointer"
+                            title={isPlaying ? 'Pause' : 'Play'}
+                          >
+                            {isPlaying ? <Pause className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white" />}
+                          </button>
+                          <button
+                            onClick={() => setActiveAddKeyByteIdx((prev) => (prev + 1) % 16)}
+                            className="p-2 rounded-xl bg-[#f0f3ff] text-[#142380] hover:bg-[#e7eefe] transition-colors cursor-pointer"
+                            title="Next Byte"
+                          >
+                            <SkipForward className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Main 3 Panels Grid */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-stretch">
+                      
+                      {/* PANEL 1: STATE MATRIX (INPUT) */}
+                      <div className="bg-white p-5 rounded-3xl border border-[#D9DDE7] shadow-sm space-y-4 flex flex-col justify-between">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-extrabold text-[#767683] uppercase tracking-wider">
+                            STATE MATRIX (INPUT)
+                          </span>
+                          <span className="bg-[#e7eefe] text-[#142380] text-[10px] font-extrabold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                            {currentStep.round === 0 ? 'From Input' : 'From MixColumns'}
+                          </span>
+                        </div>
+
+                        {/* 4x4 Grid Matrix */}
+                        <div className="grid grid-cols-4 gap-2.5 my-auto max-w-xs mx-auto w-full">
+                          {Array.from({ length: 4 }).map((_, r) =>
+                            Array.from({ length: 4 }).map((_, c) => {
+                              const byteIdx = c * 4 + r; // column-major
+                              const val = inputMatrix[r][c];
+                              const isSelected = byteIdx === activeAddKeyByteIdx;
+
+                              return (
+                                <div
+                                  key={`in-${r}-${c}`}
+                                  onClick={() => setActiveAddKeyByteIdx(byteIdx)}
+                                  className={`p-3 rounded-2xl border-2 font-mono font-extrabold text-sm text-center transition-all cursor-pointer ${
+                                    isSelected
+                                      ? 'border-[#142380] bg-[#e7eefe] text-[#142380] shadow-sm scale-105 z-10'
+                                      : 'border-[#D9DDE7] bg-[#F7F8FC] text-[#151c27] hover:border-[#c6c5d4]'
+                                  }`}
+                                >
+                                  {val.toString(16).padStart(2, '0').toUpperCase()}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+
+                        <div className="text-[11px] text-[#767683] text-center font-medium">
+                          Input state before XOR operation
+                        </div>
+                      </div>
+
+                      {/* PANEL 2: XOR OPERATION (ENGINE) */}
+                      <div className="bg-[#f0f3ff]/60 rounded-3xl border-2 border-dashed border-[#142380]/20 p-5 text-center flex flex-col items-center justify-between space-y-4 shadow-sm">
+                        <div className="text-xs font-extrabold text-[#142380] uppercase tracking-wider">
+                          XOR OPERATION (ENGINE)
+                        </div>
+
+                        {/* State Byte Box */}
+                        <div className="space-y-1 w-full flex flex-col items-center">
+                          <span className="text-[10px] font-extrabold text-[#454652] uppercase tracking-wider">
+                            STATE BYTE ({curStateByte.toString(16).padStart(2, '0').toUpperCase()})
+                          </span>
+                          <div className="w-16 h-16 rounded-2xl bg-white border-2 border-[#142380] text-[#142380] font-mono font-extrabold text-xl flex items-center justify-center shadow-xs">
+                            {curStateByte.toString(16).padStart(2, '0').toUpperCase()}
+                          </div>
+                        </div>
+
+                        {/* Circle Plus Icon */}
+                        <div className="flex items-center gap-2 text-[#96490d]">
+                          <div className="w-8 h-8 rounded-full bg-[#ffdbc9] border border-[#ff9a5b] text-[#96490d] font-mono font-extrabold text-base flex items-center justify-center shadow-2xs">
+                            ⊕
+                          </div>
+                          <span className="text-[10px] font-extrabold text-[#96490d] uppercase tracking-wider">
+                            ROUND KEY BYTE ({curKeyByte.toString(16).padStart(2, '0').toUpperCase()})
+                          </span>
+                        </div>
+
+                        {/* Round Key Byte Box */}
+                        <div className="w-16 h-16 rounded-2xl bg-white border-2 border-[#D9DDE7] text-[#151c27] font-mono font-extrabold text-xl flex items-center justify-center shadow-xs">
+                          {curKeyByte.toString(16).padStart(2, '0').toUpperCase()}
+                        </div>
+
+                        {/* Arrow Down */}
+                        <div className="text-[#142380]">
+                          <ArrowRight className="w-4 h-4 rotate-90" />
+                        </div>
+
+                        {/* Result Byte Box */}
+                        <div className="space-y-1 w-full flex flex-col items-center">
+                          <div className="w-16 h-16 rounded-2xl bg-[#ffdbc9] border-2 border-[#ff9a5b] text-[#96490d] font-mono font-extrabold text-xl flex items-center justify-center shadow-sm">
+                            {curResultByte.toString(16).padStart(2, '0').toUpperCase()}
+                          </div>
+                          <span className="text-[10px] font-extrabold text-[#96490d] uppercase tracking-wider">
+                            RESULT ({curResultByte.toString(16).padStart(2, '0').toUpperCase()})
+                          </span>
+                        </div>
+
+                        {/* Equation Badge */}
+                        <div className="bg-white border border-[#dce2f3] px-4 py-1.5 rounded-xl font-mono text-xs font-extrabold text-[#142380] shadow-2xs">
+                          {curStateByte.toString(16).padStart(2, '0').toUpperCase()} ⊕ {curKeyByte.toString(16).padStart(2, '0').toUpperCase()} = {curResultByte.toString(16).padStart(2, '0').toUpperCase()}
+                        </div>
+
+                        <p className="text-[11px] text-[#454652] leading-tight px-2">
+                          XOR combines the data with the round key to produce the next encrypted state.
+                        </p>
+                      </div>
+
+                      {/* PANEL 3: UPDATED STATE (OUTPUT) */}
+                      <div className="bg-white p-5 rounded-3xl border border-[#D9DDE7] shadow-sm space-y-4 flex flex-col justify-between">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-extrabold text-[#767683] uppercase tracking-wider">
+                            UPDATED STATE (OUTPUT)
+                          </span>
+                          <span className="text-[#96490d] text-[10px] font-extrabold flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full bg-[#ff9a5b] animate-pulse" />
+                            Populating...
+                          </span>
+                        </div>
+
+                        {/* 4x4 Output Grid Matrix */}
+                        <div className="grid grid-cols-4 gap-2.5 my-auto max-w-xs mx-auto w-full">
+                          {Array.from({ length: 4 }).map((_, r) =>
+                            Array.from({ length: 4 }).map((_, c) => {
+                              const byteIdx = c * 4 + r; // column-major
+                              const isProcessed = byteIdx <= activeAddKeyByteIdx;
+                              const isCurrent = byteIdx === activeAddKeyByteIdx;
+                              const val = outputMatrix[r][c];
+
+                              return (
+                                <div
+                                  key={`out-${r}-${c}`}
+                                  onClick={() => setActiveAddKeyByteIdx(byteIdx)}
+                                  className={`p-3 rounded-2xl border-2 font-mono font-extrabold text-sm text-center transition-all cursor-pointer ${
+                                    isCurrent
+                                      ? 'border-[#ff9a5b] bg-[#ffdbc9] text-[#96490d] shadow-sm scale-105 z-10'
+                                      : isProcessed
+                                      ? 'border-[#142380]/30 bg-[#f0f3ff] text-[#142380]'
+                                      : 'border-dashed border-[#D9DDE7] bg-[#F7F8FC] text-[#c6c5d4]'
+                                  }`}
+                                >
+                                  {isProcessed ? val.toString(16).padStart(2, '0').toUpperCase() : '--'}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+
+                        <div className="text-[11px] text-[#767683] text-center font-medium">
+                          Result state after Round Key XOR
+                        </div>
+                      </div>
+
+                    </div>
+
+                    {/* Lower Cards Row */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      
+                      {/* Transformation Detail Card */}
+                      <div className="bg-[#f0f3ff] p-5 rounded-3xl border border-[#dce2f3] space-y-4 shadow-2xs">
+                        <div className="flex items-center gap-2 text-[#142380]">
+                          <Info className="w-4 h-4 text-[#142380]" />
+                          <h3 className="text-xs font-extrabold uppercase tracking-wider">
+                            Transformation Detail
+                          </h3>
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-2 text-center font-mono">
+                          <div className="bg-white p-2.5 rounded-2xl border border-[#dce2f3]">
+                            <div className="text-[9px] font-extrabold text-[#767683] uppercase">POSITION</div>
+                            <div className="text-xs font-bold text-[#142380]">R{curRow}, C{curCol}</div>
+                          </div>
+                          <div className="bg-white p-2.5 rounded-2xl border border-[#dce2f3]">
+                            <div className="text-[9px] font-extrabold text-[#767683] uppercase">STATE BYTE</div>
+                            <div className="text-xs font-bold text-[#151c27]">{curStateByte.toString(16).padStart(2, '0').toUpperCase()}</div>
+                          </div>
+                          <div className="bg-white p-2.5 rounded-2xl border border-[#dce2f3]">
+                            <div className="text-[9px] font-extrabold text-[#767683] uppercase">ROUND KEY</div>
+                            <div className="text-xs font-bold text-[#151c27]">{curKeyByte.toString(16).padStart(2, '0').toUpperCase()}</div>
+                          </div>
+                          <div className="bg-white p-2.5 rounded-2xl border border-[#ff9a5b]">
+                            <div className="text-[9px] font-extrabold text-[#96490d] uppercase">XOR RESULT</div>
+                            <div className="text-xs font-bold text-[#96490d]">{curResultByte.toString(16).padStart(2, '0').toUpperCase()}</div>
+                          </div>
+                        </div>
+
+                        <p className="text-xs text-[#454652] leading-relaxed">
+                          Byte-by-byte processing: 16 total operations. The state is processed in column-major order.
+                        </p>
+                      </div>
+
+                      {/* Why AddRoundKey? Dark Navy Card */}
+                      <div className="bg-[#142380] text-white p-5 rounded-3xl shadow-md relative overflow-hidden space-y-2.5">
+                        <div className="text-[10px] font-extrabold uppercase tracking-widest text-[#dfe0ff]">
+                          Security Pillar
+                        </div>
+                        <h3 className="text-base font-extrabold tracking-tight text-white">
+                          Why AddRoundKey?
+                        </h3>
+                        <p className="text-xs text-[#dfe0ff] leading-relaxed pr-6">
+                          This is the <strong>only step</strong> in the entire AES algorithm where the secret key is actually used. All other steps are public mathematical operations... Without AddRoundKey, AES provides no actual security!
+                        </p>
+                        <Lock className="w-16 h-16 text-white/10 absolute -right-2 -bottom-2 pointer-events-none" />
+                      </div>
+
+                    </div>
+
+                    {/* Floating Controls Toolbar */}
+                    <div className="bg-white border border-[#D9DDE7] p-3 rounded-2xl shadow-md flex items-center justify-between gap-4 max-w-xl mx-auto">
+                      <button
+                        onClick={() => setActiveSubByteIdx(0)}
+                        className="px-3 py-1.5 rounded-xl text-xs font-bold text-[#454652] hover:bg-[#f0f3ff] hover:text-[#142380] transition-colors cursor-pointer"
+                      >
+                        RESET
+                      </button>
+                      <button
+                        onClick={() => setActiveSubByteIdx((prev) => Math.max(0, prev - 1))}
+                        disabled={activeSubByteIdx === 0}
+                        className="p-2 rounded-xl text-[#454652] hover:bg-[#f0f3ff] disabled:opacity-40 transition-colors cursor-pointer"
+                      >
+                        <SkipBack className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        onClick={() => setIsPlaying(!isPlaying)}
+                        className="w-10 h-10 rounded-full bg-[#142380] text-white flex items-center justify-center shadow-sm hover:bg-[#2f3c97] transition-colors cursor-pointer"
+                      >
+                        {isPlaying ? <Pause className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white" />}
+                      </button>
+
+                      <button
+                        onClick={() => setActiveSubByteIdx((prev) => Math.min(15, prev + 1))}
+                        disabled={activeSubByteIdx === 15}
+                        className="p-2 rounded-xl text-[#454652] hover:bg-[#f0f3ff] disabled:opacity-40 transition-colors cursor-pointer"
+                      >
+                        <SkipForward className="w-4 h-4" />
+                      </button>
+
+                      <span className="text-xs font-mono font-bold text-[#142380]">
+                        Step {activeSubByteIdx + 1} of 16
+                      </span>
+                    </div>
+
+                    {/* Green Round Complete Banner */}
+                    {activeSubByteIdx === 15 && (
+                      <div className="bg-[#e8f8ee] border-2 border-[#10b981] rounded-3xl p-6 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-2xl bg-[#10b981] text-white flex items-center justify-center shrink-0">
+                            <CheckCircle2 className="w-7 h-7" />
+                          </div>
+                          <div>
+                            <h3 className="text-base font-extrabold text-[#065f46]">
+                              Round {currentStep.round} Complete
+                            </h3>
+                            <p className="text-xs text-[#047857] mt-0.5">
+                              All encryption steps for Round {currentStep.round} finished successfully. State has been transformed with the round key.
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            const nextIdx = trace.steps.findIndex((s, idx) => idx > currentStepIdx && s.operation === 'subBytes');
+                            if (nextIdx >= 0) {
+                              setCurrentStepIdx(nextIdx);
+                              setActiveAddKeyByteIdx(0);
+                            } else if (currentStepIdx < trace.steps.length - 1) {
+                              setCurrentStepIdx(currentStepIdx + 1);
+                              setActiveAddKeyByteIdx(0);
+                            }
+                          }}
+                          className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-[#142380] hover:bg-[#2f3c97] text-white font-extrabold text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer shrink-0"
+                        >
+                          <span>Continue to Round {currentStep.round + 1}</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })() : currentStep.operation === 'mixColumns' ? (() => {
+                const inputMatrix = currentStep.prevState || currentStep.state;
+                const outputMatrix = currentStep.state;
+
+                const colIdx = activeMixColIdx;
+                const inBytes = [
+                  inputMatrix[0]?.[colIdx] ?? 0,
+                  inputMatrix[1]?.[colIdx] ?? 0,
+                  inputMatrix[2]?.[colIdx] ?? 0,
+                  inputMatrix[3]?.[colIdx] ?? 0,
+                ];
+                const outBytes = [
+                  outputMatrix[0]?.[colIdx] ?? 0,
+                  outputMatrix[1]?.[colIdx] ?? 0,
+                  outputMatrix[2]?.[colIdx] ?? 0,
+                  outputMatrix[3]?.[colIdx] ?? 0,
+                ];
+
+                return (
+                  <div className="space-y-6">
+                    {/* Header Title & Subtitle */}
+                    <div className="space-y-1">
+                      <h1 className="text-2xl font-extrabold text-[#151c27] tracking-tight">
+                        MixColumns Transformation
+                      </h1>
+                      <p className="text-xs text-[#767683] max-w-3xl">
+                        MixColumns provides diffusion by mixing the four bytes of each column using a linear transformation. This ensures that every byte of the output depends on all four bytes of the input column.
+                      </p>
+                    </div>
+
+                    {/* Top 3-Panel Row: BEFORE MIXING | MIXCOLUMNS ENGINE | AFTER MIXING */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+                      
+                      {/* Panel 1: BEFORE MIXING */}
+                      <div className="lg:col-span-3 bg-white p-5 rounded-3xl border border-[#D9DDE7] shadow-xs flex flex-col justify-between space-y-4">
+                        <div className="text-center">
+                          <span className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider">
+                            BEFORE MIXING
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-1.5 p-2 bg-[#F7F8FC] rounded-2xl border border-[#D9DDE7] my-auto">
+                          {Array.from({ length: 4 }).map((_, r) =>
+                            Array.from({ length: 4 }).map((_, c) => {
+                              const val = inputMatrix[r][c];
+                              const isCurCol = c === activeMixColIdx;
+
+                              return (
+                                <div
+                                  key={`before-mc-${r}-${c}`}
+                                  onClick={() => setActiveMixColIdx(c)}
+                                  className={`aspect-square rounded-xl text-xs font-mono font-extrabold flex items-center justify-center cursor-pointer transition-all ${
+                                    isCurCol
+                                      ? 'border-2 border-[#142380] bg-[#f0f3ff] text-[#142380] shadow-2xs scale-105'
+                                      : 'bg-white text-[#151c27] border border-[#D9DDE7] hover:bg-[#F7F8FC]'
+                                  }`}
+                                >
+                                  0x{val.toString(16).padStart(2, '0').toUpperCase()}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+
+                        <div className="text-center text-[11px] font-medium text-[#767683]">
+                          Processing: Column {activeMixColIdx}
+                        </div>
+                      </div>
+
+                      {/* Panel 2: MIXCOLUMNS ENGINE */}
+                      <div className="lg:col-span-6 bg-white p-6 rounded-3xl border border-[#D9DDE7] shadow-xs flex flex-col justify-between space-y-4 text-center relative overflow-hidden">
+                        <div className="text-center space-y-0.5">
+                          <span className="text-[10px] font-extrabold text-[#142380] uppercase tracking-wider">
+                            MIXCOLUMNS ENGINE
+                          </span>
+                          <p className="text-[11px] text-[#767683] font-medium">
+                            Transforming Column {activeMixColIdx}
+                          </p>
+                        </div>
+
+                        <div className="flex flex-col items-center justify-center gap-4 my-auto py-2">
+                          {/* Input Column Bytes */}
+                          <div className="flex gap-2">
+                            {inBytes.map((b, i) => (
+                              <div
+                                key={`in-col-${i}`}
+                                className="w-12 h-12 rounded-xl bg-[#142380] text-white flex items-center justify-center font-mono font-extrabold text-xs shadow-md"
+                              >
+                                0x{b.toString(16).padStart(2, '0').toUpperCase()}
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Center Rotating Engine */}
+                          <div className="flex items-center gap-3">
+                            <div className="w-14 h-14 rounded-full border-2 border-[#142380] text-[#142380] flex flex-col items-center justify-center bg-[#f0f3ff] shadow-2xs">
+                              <RefreshCw className="w-5 h-5 text-[#142380] animate-spin" />
+                            </div>
+                            <div className="text-left text-[11px] font-mono font-bold text-[#142380] bg-[#f0f3ff] px-3 py-1.5 rounded-xl border border-[#dce2f3]">
+                              <div>GF(2⁸) MDS Matrix Multiplication</div>
+                              <div className="text-[9px] text-[#767683] font-sans font-normal">
+                                [02 03 01 01] × Column Vector
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Output Column Bytes */}
+                          <div className="flex gap-2">
+                            {outBytes.map((b, i) => (
+                              <div
+                                key={`out-col-${i}`}
+                                className="w-12 h-12 rounded-xl bg-[#e8f8ee] border-2 border-[#10b981] text-[#065f46] flex items-center justify-center font-mono font-extrabold text-xs shadow-md"
+                              >
+                                0x{b.toString(16).padStart(2, '0').toUpperCase()}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <p className="text-xs font-bold text-[#142380] text-center">
+                          Each output byte depends on all four input bytes.
+                        </p>
+                      </div>
+
+                      {/* Panel 3: AFTER MIXING */}
+                      <div className="lg:col-span-3 bg-white p-5 rounded-3xl border border-[#D9DDE7] shadow-xs flex flex-col justify-between space-y-4">
+                        <div className="text-center">
+                          <span className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider">
+                            AFTER MIXING
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-1.5 p-2 bg-[#F7F8FC] rounded-2xl border border-[#D9DDE7] my-auto">
+                          {Array.from({ length: 4 }).map((_, r) =>
+                            Array.from({ length: 4 }).map((_, c) => {
+                              const val = outputMatrix[r][c];
+                              const isProc = c <= activeMixColIdx;
+                              const isCurCol = c === activeMixColIdx;
+
+                              return (
+                                <div
+                                  key={`after-mc-${r}-${c}`}
+                                  onClick={() => setActiveMixColIdx(c)}
+                                  className={`aspect-square rounded-xl text-xs font-mono font-extrabold flex items-center justify-center cursor-pointer transition-all ${
+                                    isCurCol
+                                      ? 'border-2 border-[#10b981] bg-[#e8f8ee] text-[#065f46] shadow-2xs scale-105'
+                                      : isProc
+                                      ? 'bg-[#f0f3ff] text-[#142380] border border-[#dce2f3]'
+                                      : 'bg-white text-[#c6c5d4] border border-dashed border-[#D9DDE7]'
+                                  }`}
+                                >
+                                  {isProc ? `0x${val.toString(16).padStart(2, '0').toUpperCase()}` : '--'}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+
+                        <div className="text-center text-[11px] font-extrabold text-[#142380]">
+                          Column {activeMixColIdx + 1}/4 Processed
+                        </div>
+                      </div>
+
+                    </div>
+
+                    {/* Middle Row: Transformation Detail Card + Controls */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+                      
+                      {/* Left: Transformation Detail */}
+                      <div className="lg:col-span-9 bg-white p-5 rounded-3xl border border-[#D9DDE7] shadow-xs flex flex-col justify-between space-y-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center divide-x divide-[#f0f3ff]">
+                          <div className="p-2">
+                            <div className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider mb-1">
+                              CURRENT COLUMN
+                            </div>
+                            <div className="text-base font-mono font-extrabold text-[#142380]">
+                              Column {activeMixColIdx}
+                            </div>
+                          </div>
+
+                          <div className="p-2">
+                            <div className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider mb-1">
+                              INPUT BYTES
+                            </div>
+                            <div className="text-xs font-mono font-extrabold text-[#151c27] truncate">
+                              {inBytes.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ')}
+                            </div>
+                          </div>
+
+                          <div className="p-2">
+                            <div className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider mb-1">
+                              STATUS
+                            </div>
+                            <div className="text-xs font-mono font-extrabold text-[#065f46] bg-[#e8f8ee] px-2 py-0.5 rounded-full inline-block">
+                              Transformed
+                            </div>
+                          </div>
+
+                          <div className="p-2">
+                            <div className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider mb-1">
+                              OUTPUT BYTES
+                            </div>
+                            <div className="text-xs font-mono font-extrabold text-[#065f46] truncate">
+                              {outBytes.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ')}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="pt-3 border-t border-[#f0f3ff] text-center text-xs text-[#454652] font-medium">
+                          Galois Field Matrix Equation: <span className="font-mono font-bold text-[#142380]">S'(0,c) = ({'{02}'}•S(0,c)) ⊕ ({'{03}'}•S(1,c)) ⊕ S(2,c) ⊕ S(3,c)</span>
+                        </div>
+                      </div>
+
+                      {/* Right: Controls Card */}
+                      <div className="lg:col-span-3 bg-white p-5 rounded-3xl border border-[#D9DDE7] shadow-xs flex items-center justify-center gap-3">
+                        <button
+                          onClick={() => setActiveMixColIdx((prev) => Math.max(0, prev - 1))}
+                          disabled={activeMixColIdx === 0}
+                          className="p-3.5 rounded-2xl bg-[#F7F8FC] border border-[#D9DDE7] hover:bg-[#e7eefe] text-[#151c27] disabled:opacity-40 transition-all cursor-pointer"
+                          title="Previous Column"
+                        >
+                          <SkipBack className="w-5 h-5" />
+                        </button>
+
+                        <button
+                          onClick={() => setIsPlaying(!isPlaying)}
+                          className="p-4 rounded-2xl bg-[#142380] text-white hover:bg-[#2f3c97] shadow-sm transition-all cursor-pointer"
+                          title={isPlaying ? 'Pause' : 'Play'}
+                        >
+                          {isPlaying ? <Pause className="w-5 h-5 fill-white" /> : <Play className="w-5 h-5 fill-white" />}
+                        </button>
+
+                        <button
+                          onClick={() => setActiveMixColIdx((prev) => Math.min(3, prev + 1))}
+                          disabled={activeMixColIdx === 3}
+                          className="p-3.5 rounded-2xl bg-[#F7F8FC] border border-[#D9DDE7] hover:bg-[#e7eefe] text-[#151c27] disabled:opacity-40 transition-all cursor-pointer"
+                          title="Next Column"
+                        >
+                          <SkipForward className="w-5 h-5" />
+                        </button>
+
+                        <button
+                          onClick={() => { setIsPlaying(false); setActiveMixColIdx(0); }}
+                          className="p-3.5 rounded-2xl bg-[#F7F8FC] border border-[#D9DDE7] hover:bg-[#e7eefe] text-[#767683] transition-all cursor-pointer"
+                          title="Reset"
+                        >
+                          <RotateCcw className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                    </div>
+
+                    {/* Bottom Row: Educational Box + Learning Hub */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+                      
+                      {/* Left: Why MixColumns? Card */}
+                      <div className="lg:col-span-8 bg-white p-6 rounded-3xl border border-[#D9DDE7] shadow-xs space-y-3 flex flex-col justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-2xl bg-[#f0f3ff] text-[#142380] flex items-center justify-center shrink-0">
+                            <Brain className="w-5 h-5" />
+                          </div>
+                          <h2 className="text-lg font-extrabold text-[#151c27]">
+                            Why MixColumns?
+                          </h2>
+                        </div>
+
+                        <p className="text-xs text-[#454652] leading-relaxed">
+                          MixColumns provides high-degree <strong className="font-extrabold text-[#142380]">Diffusion</strong> by mixing the four bytes in each column. By using matrix multiplication over GF(2⁸), changing a single input bit ensures that all 4 bytes of the output column are altered, spreading changes exponentially across rounds.
+                        </p>
+                      </div>
+
+                      {/* Right: Learning Hub Card */}
+                      <div className="lg:col-span-4 bg-[#142380] text-white p-6 rounded-3xl shadow-md space-y-4 flex flex-col justify-between">
+                        <h3 className="text-base font-extrabold text-white tracking-tight">
+                          Learning Hub
+                        </h3>
+
+                        <div className="space-y-2.5">
+                          {[
+                            'What is Diffusion?',
+                            'Why Columns are Mixed?',
+                            'Column Transformation Math',
+                            'Preparing for AddRoundKey'
+                          ].map((item, idx) => (
+                            <button
+                              key={`mc-hub-${idx}`}
+                              className="w-full bg-white/10 hover:bg-white/20 text-white rounded-2xl p-3 flex items-center justify-between text-xs font-bold transition-all cursor-pointer border border-white/10"
+                            >
+                              <span>{item}</span>
+                              <ChevronRight className="w-4 h-4 text-white/80" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                    </div>
+
+                    {/* MixColumns Complete Banner */}
+                    <div className="bg-[#e8f8ee] border-2 border-[#10b981] rounded-3xl p-6 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-2xl bg-[#10b981] text-white flex items-center justify-center shrink-0">
+                          <CheckCircle2 className="w-7 h-7" />
+                        </div>
+                        <div>
+                          <h3 className="text-base font-extrabold text-[#151c27]">
+                            MixColumns Completed for Round {currentStep.round}
+                          </h3>
+                          <p className="text-xs text-[#454652] mt-0.5">
+                            All 4 columns mixed successfully using GF(2⁸) matrix multiplication. Ready for AddRoundKey.
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          const nextIdx = trace.steps.findIndex(
+                            (s, idx) => idx > currentStepIdx && s.operation === 'addRoundKey'
+                          );
+                          if (nextIdx !== -1) {
+                            setCurrentStepIdx(nextIdx);
+                          } else if (currentStepIdx < trace.steps.length - 1) {
+                            setCurrentStepIdx(currentStepIdx + 1);
+                          }
+                        }}
+                        className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-[#142380] hover:bg-[#2f3c97] text-white font-extrabold text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer shrink-0"
+                      >
+                        <span>Continue to AddRoundKey</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                  </div>
+                );
+              })() : (currentStep.operation as string) === 'addRoundKey' ? (() => {
+                const curRow = activeAddKeyByteIdx % 4;
+                const curCol = Math.floor(activeAddKeyByteIdx / 4);
+                const inputMatrix = currentStep.prevState || currentStep.state;
+                const outputMatrix = currentStep.state;
+                const keyMatrix = currentStep.roundKey || Array.from({ length: 4 }, () => [0, 0, 0, 0]);
+
+                const stateByte = inputMatrix[curRow]?.[curCol] ?? 0;
+                const keyByte = keyMatrix[curRow]?.[curCol] ?? 0;
+                const resultByte = outputMatrix[curRow]?.[curCol] ?? (stateByte ^ keyByte);
+
+                const stateByteHex = stateByte.toString(16).padStart(2, '0').toUpperCase();
+                const keyByteHex = keyByte.toString(16).padStart(2, '0').toUpperCase();
+                const resultByteHex = resultByte.toString(16).padStart(2, '0').toUpperCase();
+
+                const stateByteBin = stateByte.toString(2).padStart(8, '0');
+                const keyByteBin = keyByte.toString(2).padStart(8, '0');
+                const resultByteBin = resultByte.toString(2).padStart(8, '0');
+
+                return (
+                  <div className="space-y-6">
+                    {/* Header Title & Subtitle */}
+                    <div className="space-y-1">
+                      <h1 className="text-2xl font-extrabold text-[#151c27] tracking-tight">
+                        AddRoundKey Transformation
+                      </h1>
+                      <p className="text-xs text-[#767683] max-w-3xl">
+                        The final transformation of the round. In this step, the 128-bit State Matrix is combined byte-by-byte with the 128-bit Round Key using a bitwise XOR (⊕) operation.
+                      </p>
+                    </div>
+
+                    {/* Top 3-Panel Row: STATE MATRIX (INPUT) | XOR OPERATION ENGINE | UPDATED STATE MATRIX (OUTPUT) */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+                      
+                      {/* Panel 1: STATE MATRIX (INPUT) */}
+                      <div className="lg:col-span-3 bg-white p-5 rounded-3xl border border-[#D9DDE7] shadow-xs flex flex-col justify-between space-y-4">
+                        <div className="text-center">
+                          <span className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider">
+                            STATE MATRIX (INPUT)
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-1.5 p-2 bg-[#F7F8FC] rounded-2xl border border-[#D9DDE7] my-auto">
+                          {Array.from({ length: 4 }).map((_, r) =>
+                            Array.from({ length: 4 }).map((_, c) => {
+                              const bIdx = c * 4 + r;
+                              const val = inputMatrix[r][c];
+                              const isCur = bIdx === activeAddKeyByteIdx;
+
+                              return (
+                                <div
+                                  key={`in-ark-${r}-${c}`}
+                                  onClick={() => setActiveAddKeyByteIdx(bIdx)}
+                                  className={`aspect-square rounded-xl text-xs font-mono font-extrabold flex items-center justify-center cursor-pointer transition-all ${
+                                    isCur
+                                      ? 'border-2 border-[#142380] bg-[#f0f3ff] text-[#142380] shadow-2xs scale-105'
+                                      : 'bg-white text-[#151c27] border border-[#D9DDE7] hover:bg-[#F7F8FC]'
+                                  }`}
+                                >
+                                  0x{val.toString(16).padStart(2, '0').toUpperCase()}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+
+                        <div className="text-center text-[11px] font-medium text-[#767683]">
+                          Processing: Row {curRow}, Col {curCol}
+                        </div>
+                      </div>
+
+                      {/* Panel 2: XOR OPERATION ENGINE */}
+                      <div className="lg:col-span-6 bg-white p-6 rounded-3xl border border-[#D9DDE7] shadow-xs flex flex-col justify-between space-y-4 text-center relative overflow-hidden">
+                        <span className="text-[10px] font-extrabold text-[#142380] uppercase tracking-wider">
+                          XOR OPERATION ENGINE
+                        </span>
+
+                        <div className="flex flex-col items-center justify-center gap-3 my-auto py-2">
+                          {/* Top State Byte & Round Key Byte Stack */}
+                          <div className="flex items-center justify-center gap-4 sm:gap-6">
+                            {/* State Byte Card */}
+                            <div className="flex flex-col items-center">
+                              <span className="text-[10px] font-extrabold text-[#767683] uppercase mb-1">
+                                STATE BYTE
+                              </span>
+                              <div className="w-16 h-16 rounded-2xl bg-[#142380] text-white flex items-center justify-center font-mono font-extrabold text-lg shadow-md">
+                                0x{stateByteHex}
+                              </div>
+                              <span className="text-[10px] font-mono font-bold text-[#767683] mt-1.5">
+                                {stateByteBin}
+                              </span>
+                            </div>
+
+                            {/* XOR Icon */}
+                            <div className="flex flex-col items-center justify-center text-[#96490d]">
+                              <div className="w-10 h-10 rounded-full bg-[#ffdbc9] border border-[#ff9a5b] flex items-center justify-center font-mono font-extrabold text-base shadow-2xs">
+                                ⊕
+                              </div>
+                              <span className="text-[9px] font-extrabold uppercase mt-1 text-[#96490d]">XOR</span>
+                            </div>
+
+                            {/* Round Key Byte Card */}
+                            <div className="flex flex-col items-center">
+                              <span className="text-[10px] font-extrabold text-[#767683] uppercase mb-1">
+                                ROUND KEY BYTE
+                              </span>
+                              <div className="w-16 h-16 rounded-2xl bg-[#151c27] text-white flex items-center justify-center font-mono font-extrabold text-lg shadow-md">
+                                0x{keyByteHex}
+                              </div>
+                              <span className="text-[10px] font-mono font-bold text-[#767683] mt-1.5">
+                                {keyByteBin}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Divider Line */}
+                          <div className="w-48 h-0.5 bg-[#D9DDE7] my-1" />
+
+                          {/* Result Byte Card */}
+                          <div className="flex flex-col items-center">
+                            <span className="text-[10px] font-extrabold text-[#065f46] uppercase mb-1">
+                              RESULT STATE BYTE
+                            </span>
+                            <div className="w-20 h-14 rounded-2xl bg-[#e8f8ee] border-2 border-[#10b981] text-[#065f46] flex items-center justify-center font-mono font-extrabold text-xl shadow-md">
+                              0x{resultByteHex}
+                            </div>
+                            <span className="text-[10px] font-mono font-bold text-[#065f46] mt-1.5">
+                              {resultByteBin}
+                            </span>
+                          </div>
+                        </div>
+
+                        <p className="text-xs font-bold text-[#142380] text-center">
+                          0x{stateByteHex} ⊕ 0x{keyByteHex} = 0x{resultByteHex}
+                        </p>
+                      </div>
+
+                      {/* Panel 3: UPDATED STATE MATRIX (OUTPUT) */}
+                      <div className="lg:col-span-3 bg-white p-5 rounded-3xl border border-[#D9DDE7] shadow-xs flex flex-col justify-between space-y-4">
+                        <div className="text-center">
+                          <span className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider">
+                            UPDATED STATE MATRIX
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-1.5 p-2 bg-[#F7F8FC] rounded-2xl border border-[#D9DDE7] my-auto">
+                          {Array.from({ length: 4 }).map((_, r) =>
+                            Array.from({ length: 4 }).map((_, c) => {
+                              const bIdx = c * 4 + r;
+                              const isProc = bIdx <= activeAddKeyByteIdx;
+                              const isCur = bIdx === activeAddKeyByteIdx;
+                              const val = outputMatrix[r][c];
+
+                              return (
+                                <div
+                                  key={`upd-ark-${r}-${c}`}
+                                  onClick={() => setActiveAddKeyByteIdx(bIdx)}
+                                  className={`aspect-square rounded-xl text-xs font-mono font-extrabold flex items-center justify-center cursor-pointer transition-all ${
+                                    isCur
+                                      ? 'border-2 border-[#10b981] bg-[#e8f8ee] text-[#065f46] shadow-2xs scale-105'
+                                      : isProc
+                                      ? 'bg-[#f0f3ff] text-[#142380] border border-[#dce2f3]'
+                                      : 'bg-white text-[#c6c5d4] border border-dashed border-[#D9DDE7]'
+                                  }`}
+                                >
+                                  {isProc ? `0x${val.toString(16).padStart(2, '0').toUpperCase()}` : '--'}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+
+                        <div className="text-center text-[11px] font-extrabold text-[#142380]">
+                          {activeAddKeyByteIdx + 1}/16 Bytes Processed
+                        </div>
+                      </div>
+
+                    </div>
+
+                    {/* Middle Row: Transformation Detail Card + Controls */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+                      
+                      {/* Left: Transformation Detail */}
+                      <div className="lg:col-span-9 bg-white p-5 rounded-3xl border border-[#D9DDE7] shadow-xs flex flex-col justify-between space-y-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center divide-x divide-[#f0f3ff]">
+                          <div className="p-2">
+                            <div className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider mb-1">
+                              POSITION
+                            </div>
+                            <div className="text-base font-mono font-extrabold text-[#142380]">
+                              R{curRow}, C{curCol}
+                            </div>
+                          </div>
+
+                          <div className="p-2">
+                            <div className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider mb-1">
+                              STATE BYTE
+                            </div>
+                            <div className="text-xs font-mono font-extrabold text-[#151c27]">
+                              0x{stateByteHex}
+                            </div>
+                          </div>
+
+                          <div className="p-2">
+                            <div className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider mb-1">
+                              ROUND KEY
+                            </div>
+                            <div className="text-xs font-mono font-extrabold text-[#151c27]">
+                              0x{keyByteHex}
+                            </div>
+                          </div>
+
+                          <div className="p-2">
+                            <div className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider mb-1">
+                              XOR RESULT
+                            </div>
+                            <div className="text-xs font-mono font-extrabold text-[#065f46] bg-[#e8f8ee] px-2 py-0.5 rounded-full inline-block">
+                              0x{resultByteHex}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="pt-3 border-t border-[#f0f3ff] text-center text-xs text-[#454652] font-medium">
+                          Bitwise Equation: <span className="font-mono font-bold text-[#142380]">{stateByteBin} ⊕ {keyByteBin} = {resultByteBin}</span>
+                        </div>
+                      </div>
+
+                      {/* Right: Controls Card */}
+                      <div className="lg:col-span-3 bg-white p-5 rounded-3xl border border-[#D9DDE7] shadow-xs flex items-center justify-center gap-3">
+                        <button
+                          onClick={() => setActiveAddKeyByteIdx((prev) => Math.max(0, prev - 1))}
+                          disabled={activeAddKeyByteIdx === 0}
+                          className="p-3.5 rounded-2xl bg-[#F7F8FC] border border-[#D9DDE7] hover:bg-[#e7eefe] text-[#151c27] disabled:opacity-40 transition-all cursor-pointer"
+                          title="Previous Byte"
+                        >
+                          <SkipBack className="w-5 h-5" />
+                        </button>
+
+                        <button
+                          onClick={() => setIsPlaying(!isPlaying)}
+                          className="p-4 rounded-2xl bg-[#142380] text-white hover:bg-[#2f3c97] shadow-sm transition-all cursor-pointer"
+                          title={isPlaying ? 'Pause' : 'Play'}
+                        >
+                          {isPlaying ? <Pause className="w-5 h-5 fill-white" /> : <Play className="w-5 h-5 fill-white" />}
+                        </button>
+
+                        <button
+                          onClick={() => setActiveAddKeyByteIdx((prev) => Math.min(15, prev + 1))}
+                          disabled={activeAddKeyByteIdx === 15}
+                          className="p-3.5 rounded-2xl bg-[#F7F8FC] border border-[#D9DDE7] hover:bg-[#e7eefe] text-[#151c27] disabled:opacity-40 transition-all cursor-pointer"
+                          title="Next Byte"
+                        >
+                          <SkipForward className="w-5 h-5" />
+                        </button>
+
+                        <button
+                          onClick={() => { setIsPlaying(false); setActiveAddKeyByteIdx(0); }}
+                          className="p-3.5 rounded-2xl bg-[#F7F8FC] border border-[#D9DDE7] hover:bg-[#e7eefe] text-[#767683] transition-all cursor-pointer"
+                          title="Reset"
+                        >
+                          <RotateCcw className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                    </div>
+
+                    {/* Bottom Row: Educational Box + Learning Hub */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+                      
+                      {/* Left: Why AddRoundKey? Card */}
+                      <div className="lg:col-span-8 bg-white p-6 rounded-3xl border border-[#D9DDE7] shadow-xs space-y-3 flex flex-col justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-2xl bg-[#f0f3ff] text-[#142380] flex items-center justify-center shrink-0">
+                            <Key className="w-5 h-5" />
+                          </div>
+                          <h2 className="text-lg font-extrabold text-[#151c27]">
+                            Why AddRoundKey?
+                          </h2>
+                        </div>
+
+                        <p className="text-xs text-[#454652] leading-relaxed">
+                          This is the <strong className="font-extrabold text-[#142380]">only step</strong> in the entire AES cipher where the secret key is directly injected into the state. All other steps (SubBytes, ShiftRows, MixColumns) are fixed public mathematical operations. AddRoundKey provides secret-dependent <strong className="font-extrabold text-[#142380]">Confusion</strong>.
+                        </p>
+                      </div>
+
+                      {/* Right: Learning Hub Card */}
+                      <div className="lg:col-span-4 bg-[#142380] text-white p-6 rounded-3xl shadow-md space-y-4 flex flex-col justify-between">
+                        <h3 className="text-base font-extrabold text-white tracking-tight">
+                          Learning Hub
+                        </h3>
+
+                        <div className="space-y-2.5">
+                          {[
+                            'What is XOR?',
+                            'Why AES Uses XOR',
+                            'Understanding Round Keys',
+                            'Secret Key Security'
+                          ].map((item, idx) => (
+                            <button
+                              key={`ark-hub-${idx}`}
+                              className="w-full bg-white/10 hover:bg-white/20 text-white rounded-2xl p-3 flex items-center justify-between text-xs font-bold transition-all cursor-pointer border border-white/10"
+                            >
+                              <span>{item}</span>
+                              <ChevronRight className="w-4 h-4 text-white/80" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                    </div>
+
+                    {/* AddRoundKey Complete Banner */}
+                    <div className="bg-[#e8f8ee] border-2 border-[#10b981] rounded-3xl p-6 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-2xl bg-[#10b981] text-white flex items-center justify-center shrink-0">
+                          <CheckCircle2 className="w-7 h-7" />
+                        </div>
+                        <div>
+                          <h3 className="text-base font-extrabold text-[#151c27]">
+                            Round {currentStep.round} Completed!
+                          </h3>
+                          <p className="text-xs text-[#454652] mt-0.5">
+                            All 16 bytes successfully XORed with Round Key {currentStep.round}. State matrix updated.
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          if (currentStepIdx < trace.steps.length - 1) {
+                            setCurrentStepIdx(currentStepIdx + 1);
+                          }
+                        }}
+                        disabled={currentStepIdx === trace.steps.length - 1}
+                        className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-[#142380] hover:bg-[#2f3c97] text-white font-extrabold text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer shrink-0 disabled:opacity-50"
+                      >
+                        <span>{currentStepIdx === trace.steps.length - 1 ? 'Encryption Complete' : 'Continue to Next Round'}</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                  </div>
+                );
+              })() : (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 
                 {/* 4x4 State Matrix View */}
                 <div className="lg:col-span-7 bg-white p-6 sm:p-8 rounded-3xl border border-[#D9DDE7] shadow-sm space-y-6">
@@ -1730,97 +3645,747 @@ export const AESVisualizer: React.FC = () => {
                     >
                       ← Previous Step
                     </button>
-                    <button
-                      onClick={() => setCurrentStepIdx((prev) => Math.min(trace.steps.length - 1, prev + 1))}
-                      disabled={currentStepIdx === trace.steps.length - 1}
-                      className="hover:text-[#142380] disabled:opacity-30 font-semibold cursor-pointer"
-                    >
-                      Next Step →
-                    </button>
+                    {currentStepIdx === trace.steps.length - 1 ? (
+                      <button
+                        onClick={() => setActiveTab('finalCiphertext')}
+                        className="px-4 py-2 bg-[#142380] hover:bg-[#2f3c97] text-white font-extrabold text-xs rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <span>View Final Ciphertext</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setCurrentStepIdx((prev) => Math.min(trace.steps.length - 1, prev + 1))}
+                        className="hover:text-[#142380] disabled:opacity-30 font-semibold cursor-pointer"
+                      >
+                        Next Step →
+                      </button>
+                    )}
                   </div>
                 </div>
-
               </div>
+            )}
             </div>
           )}
 
           {/* TAB 2: KEY EXPANSION SCHEDULE */}
-          {activeTab === 'keyExpansion' && (
-            <div className="bg-white p-6 sm:p-8 rounded-3xl border border-[#D9DDE7] shadow-sm space-y-8">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-[#D9DDE7]">
-                <div>
-                  <h2 className="text-xl font-bold text-[#151c27]">
-                    AES-128 Key Expansion Schedule
-                  </h2>
-                  <p className="text-sm text-[#454652]">
-                    Generates 11 Round Keys (44 32-bit words: W[0] through W[43]) using RotWord, SubWord, and Rcon[i].
-                  </p>
+          {activeTab === 'keyExpansion' && (() => {
+            const parsedKeyBytes = parseInputBytes(keyInput, isHexMode);
+            const keyMatrix: number[][] = [
+              [parsedKeyBytes[0] ?? 0, parsedKeyBytes[4] ?? 0, parsedKeyBytes[8] ?? 0, parsedKeyBytes[12] ?? 0],
+              [parsedKeyBytes[1] ?? 0, parsedKeyBytes[5] ?? 0, parsedKeyBytes[9] ?? 0, parsedKeyBytes[13] ?? 0],
+              [parsedKeyBytes[2] ?? 0, parsedKeyBytes[6] ?? 0, parsedKeyBytes[10] ?? 0, parsedKeyBytes[14] ?? 0],
+              [parsedKeyBytes[3] ?? 0, parsedKeyBytes[7] ?? 0, parsedKeyBytes[11] ?? 0, parsedKeyBytes[15] ?? 0],
+            ];
+            const curRoundKeyStep = trace.roundKeys[keyExpRound] || trace.roundKeys[0];
+
+            return (
+              <div className="space-y-6">
+                {/* Header Title & Badges */}
+                <div className="bg-white p-6 sm:p-8 rounded-3xl border border-[#D9DDE7] shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-[#142380] text-white">
+                        <Key className="w-5 h-5" />
+                      </div>
+                      <h1 className="text-xl sm:text-2xl font-extrabold text-[#151c27] tracking-tight">
+                        Key Expansion
+                      </h1>
+                    </div>
+                    <p className="text-xs sm:text-sm text-[#454652] max-w-2xl">
+                      Generating 10 round keys from the original 128-bit secret key.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-start sm:self-center">
+                    <span className="bg-[#f0f3ff] border border-[#dce2f3] px-3 py-1.5 rounded-xl text-xs font-extrabold text-[#142380] uppercase tracking-wider">
+                      AES-{selectedAlgo}
+                    </span>
+                    <span className="bg-[#ffdbc9] border border-[#ff9a5b]/40 px-3 py-1.5 rounded-xl text-xs font-extrabold text-[#96490d] uppercase tracking-wider flex items-center gap-1.5">
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      10 Rounds
+                    </span>
+                  </div>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {trace.roundKeys.map((rk) => {
-                  const hexVal = bytesToHexFormatted(rk.roundKeyMatrix.flat());
-                  return (
-                    <div
-                      key={rk.round}
-                      className="bg-[#F7F8FC] p-6 rounded-2xl border border-[#D9DDE7] hover:border-[#142380] hover:shadow-md transition-all space-y-4"
-                    >
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm font-bold text-[#142380] bg-[#e7eefe] px-3 py-1 rounded-full">
-                          Round Key {rk.round}
-                        </span>
-                        <button
-                          onClick={() => copyToClipboard(hexVal, `rk-${rk.round}`)}
-                          className="text-xs text-[#454652] hover:text-[#142380] flex items-center gap-1 font-mono cursor-pointer"
-                        >
-                          {copiedText === `rk-${rk.round}` ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
-                          <span>Copy</span>
-                        </button>
+                {/* THREE-PANEL EDUCATIONAL VISUALIZATION */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+                  
+                  {/* LEFT PANEL: ORIGINAL SECRET KEY */}
+                  <div className="lg:col-span-4 bg-white p-6 rounded-3xl border border-[#D9DDE7] shadow-xs flex flex-col justify-between space-y-4">
+                    <div className="flex items-center justify-between pb-3 border-b border-[#f0f3ff]">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="w-4 h-4 text-[#142380]" />
+                        <h2 className="text-sm font-extrabold text-[#151c27]">Original Secret Key</h2>
                       </div>
+                      <span className="text-[10px] font-extrabold text-[#142380] bg-[#e7eefe] px-2 py-0.5 rounded">
+                        128 BITS
+                      </span>
+                    </div>
 
-                      <div className="space-y-1.5 font-mono text-xs">
-                        {rk.words.map((w, wIdx) => {
-                          const overallWordIdx = rk.round * 4 + wIdx;
-                          return (
-                            <div key={wIdx} className="bg-white p-2 rounded-xl border border-[#D9DDE7] flex justify-between">
-                              <span className="font-bold text-[#142380]">W[{overallWordIdx}]:</span>
-                              <span className="text-[#151c27]">{bytesToHexFormatted(w)}</span>
-                            </div>
-                          );
-                        })}
+                    {/* Key Attributes */}
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="p-2.5 bg-[#F7F8FC] rounded-xl border border-[#D9DDE7]">
+                        <span className="text-[10px] font-bold text-[#767683] uppercase block">Variant</span>
+                        <span className="font-extrabold text-[#142380]">AES-128</span>
                       </div>
-
-                      {rk.rotWord && (
-                        <div className="text-[11px] bg-[#e7eefe]/50 p-2.5 rounded-xl border border-[#c6c5d4] space-y-1 text-[#454652] font-mono">
-                          <div><strong className="text-[#142380]">RotWord:</strong> {bytesToHexFormatted(rk.rotWord)}</div>
-                          <div><strong className="text-[#142380]">SubWord:</strong> {rk.subWord && bytesToHexFormatted(rk.subWord)}</div>
-                          <div><strong className="text-[#142380]">Rcon[{rk.round}]:</strong> {rk.rcon && bytesToHexFormatted(rk.rcon)}</div>
-                        </div>
-                      )}
-
-                      <div>
-                        <div className="text-[10px] font-bold text-[#454652] uppercase mb-1">
-                          4×4 Matrix Layout
-                        </div>
-                        <div className="grid grid-cols-4 gap-1 text-center font-mono text-xs">
-                          {rk.roundKeyMatrix.map((r, rIdx) =>
-                            r.map((val, cIdx) => (
-                              <div key={`${rIdx}-${cIdx}`} className="bg-white p-1 rounded border border-[#D9DDE7] text-[#151c27]">
-                                {val.toString(16).padStart(2, '0').toUpperCase()}
-                              </div>
-                            ))
-                          )}
-                        </div>
+                      <div className="p-2.5 bg-[#F7F8FC] rounded-xl border border-[#D9DDE7]">
+                        <span className="text-[10px] font-bold text-[#767683] uppercase block">Key Length</span>
+                        <span className="font-mono font-bold text-[#151c27]">16 Bytes</span>
                       </div>
                     </div>
-                  );
-                })}
+
+                    {/* 4x4 Key Matrix */}
+                    <div className="space-y-1.5">
+                      <div className="text-[10px] font-extrabold text-[#767683] uppercase tracking-wider text-center">
+                        4×4 KEY MATRIX LAYOUT
+                      </div>
+                      <div className="grid grid-cols-4 gap-1.5 p-2.5 bg-[#F7F8FC] rounded-2xl border border-[#D9DDE7]">
+                        {keyMatrix.map((rowArr, rIdx) =>
+                          rowArr.map((val, cIdx) => (
+                            <div
+                              key={`key-cell-${rIdx}-${cIdx}`}
+                              className={`aspect-square rounded-xl text-xs font-mono font-extrabold flex items-center justify-center transition-all ${
+                                keyExpRound === 0
+                                  ? 'bg-[#142380] text-white shadow-xs scale-105'
+                                  : 'bg-white text-[#142380] border border-[#D9DDE7]'
+                              }`}
+                            >
+                              {val.toString(16).padStart(2, '0').toUpperCase()}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Hex Representation */}
+                    <div className="p-3 bg-[#f0f3ff] rounded-2xl border border-[#dce2f3] text-center space-y-1">
+                      <span className="text-[10px] font-extrabold text-[#767683] uppercase">HEXADECIMAL KEY</span>
+                      <p className="text-xs font-mono font-extrabold text-[#142380] break-all">
+                        {bytesToHexFormatted(parsedKeyBytes)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* CENTER PANEL: KEY EXPANSION ENGINE */}
+                  <div className="lg:col-span-4 bg-white p-6 rounded-3xl border border-[#D9DDE7] shadow-xs flex flex-col justify-between space-y-4 text-center relative overflow-hidden">
+                    <div className="flex items-center justify-between pb-3 border-b border-[#f0f3ff]">
+                      <div className="flex items-center gap-2">
+                        <Cpu className="w-4 h-4 text-[#142380]" />
+                        <h2 className="text-sm font-extrabold text-[#151c27]">Key Expansion Engine</h2>
+                      </div>
+                      <span className="text-[10px] font-extrabold text-[#005221] bg-[#e8f8ee] px-2 py-0.5 rounded flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#005221] animate-pulse"></span>
+                        Active
+                      </span>
+                    </div>
+
+                    {/* Animated Flow & G-Function Display */}
+                    <div className="my-auto py-2 space-y-3">
+                      <div className="p-4 bg-[#f0f3ff] rounded-2xl border border-[#142380]/20 space-y-3 relative shadow-inner">
+                        <div className="flex items-center justify-center gap-2 text-xs font-extrabold text-[#142380]">
+                          <Sparkles className="w-4 h-4 text-[#142380] animate-spin" />
+                          <span>
+                            {keyExpRound === 0 ? 'Original Key Loaded' : `Deriving Round Key ${keyExpRound}`}
+                          </span>
+                        </div>
+
+                        {/* Sequence Flow */}
+                        <div className="grid grid-cols-3 gap-2 items-center text-xs font-mono">
+                          <div className="bg-white p-2.5 rounded-xl border border-[#D9DDE7] shadow-2xs">
+                            <div className="text-[9px] text-[#767683] font-bold">PREV WORD</div>
+                            <div className="font-extrabold text-[#151c27]">
+                              W[{keyExpRound === 0 ? 0 : keyExpRound * 4 - 1}]
+                            </div>
+                          </div>
+
+                          <div className="bg-[#ffdbc9] p-2.5 rounded-xl border border-[#ff9a5b] text-[#96490d] shadow-2xs">
+                            <div className="text-[9px] font-extrabold uppercase">G-FUNCTION</div>
+                            <div className="text-[10px] font-bold">Rot + Sub + Rcon</div>
+                          </div>
+
+                          <div className="bg-[#142380] text-white p-2.5 rounded-xl shadow-2xs">
+                            <div className="text-[9px] text-[#dfe0ff] font-bold">NEW WORD</div>
+                            <div className="font-extrabold">
+                              W[{keyExpRound === 0 ? 3 : keyExpRound * 4}]
+                            </div>
+                          </div>
+                        </div>
+
+                        {curRoundKeyStep.rotWord && (
+                          <div className="text-[10px] bg-white p-2 rounded-xl border border-[#D9DDE7] text-left font-mono space-y-0.5 text-[#454652]">
+                            <div><strong className="text-[#142380]">RotWord:</strong> {bytesToHexFormatted(curRoundKeyStep.rotWord)}</div>
+                            <div><strong className="text-[#142380]">SubWord:</strong> {curRoundKeyStep.subWord && bytesToHexFormatted(curRoundKeyStep.subWord)}</div>
+                            <div><strong className="text-[#142380]">Rcon[{keyExpRound}]:</strong> {curRoundKeyStep.rcon && bytesToHexFormatted(curRoundKeyStep.rcon)}</div>
+                          </div>
+                        )}
+                      </div>
+
+                      <p className="text-xs text-[#454652] leading-relaxed italic max-w-xs mx-auto">
+                        "The original secret key is expanded into multiple unique round keys used throughout AES encryption."
+                      </p>
+                    </div>
+
+                    {/* Live Status Bar */}
+                    <div className="bg-[#F7F8FC] p-3 rounded-2xl border border-[#D9DDE7] flex items-center justify-between text-xs">
+                      <span className="font-bold text-[#454652]">Status:</span>
+                      <span className="font-extrabold text-[#142380]">
+                        {keyExpRound === 0
+                          ? 'Original Key Loaded'
+                          : keyExpRound < 10
+                          ? `Generating Round Key ${keyExpRound}`
+                          : 'Round Keys Generated: 10 / 10'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* RIGHT PANEL: GENERATED ROUND KEYS CARDS */}
+                  <div className="lg:col-span-4 bg-white p-6 rounded-3xl border border-[#D9DDE7] shadow-xs flex flex-col justify-between space-y-3">
+                    <div className="flex items-center justify-between pb-3 border-b border-[#f0f3ff]">
+                      <h2 className="text-sm font-extrabold text-[#151c27]">Generated Round Keys</h2>
+                      <span className="text-[11px] font-extrabold text-[#142380] bg-[#e7eefe] px-2.5 py-0.5 rounded-full">
+                        {keyExpRound + 1} / 11 Ready
+                      </span>
+                    </div>
+
+                    {/* Scrollable list of 11 Round Key Cards */}
+                    <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+                      {trace.roundKeys.map((rk) => {
+                        const isCompleted = rk.round <= keyExpRound;
+                        const isGenerating = rk.round === keyExpRound + 1 && isPlaying;
+                        const hexPreview = bytesToHexFormatted(rk.roundKeyMatrix.flat()).substring(0, 12) + '...';
+
+                        return (
+                          <div
+                            key={`rk-card-${rk.round}`}
+                            onMouseEnter={() => setHoveredRoundKey(rk.round)}
+                            onMouseLeave={() => setHoveredRoundKey(null)}
+                            className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
+                              rk.round === keyExpRound
+                                ? 'bg-[#f0f3ff] border-2 border-[#142380] shadow-2xs'
+                                : isCompleted
+                                ? 'bg-white border-[#D9DDE7] hover:border-[#142380]'
+                                : 'bg-[#F7F8FC] border-dashed border-[#D9DDE7] opacity-60'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div
+                                className={`w-7 h-7 rounded-xl flex items-center justify-center font-mono font-bold text-xs ${
+                                  rk.round === keyExpRound
+                                    ? 'bg-[#142380] text-white'
+                                    : isCompleted
+                                    ? 'bg-[#005221] text-white'
+                                    : 'bg-[#D9DDE7] text-[#767683]'
+                                }`}
+                              >
+                                {rk.round}
+                              </div>
+
+                              <div>
+                                <div className="text-xs font-extrabold text-[#151c27]">
+                                  {rk.round === 0 ? 'Round Key 0 (Original Key)' : `Round Key ${rk.round}`}
+                                </div>
+                                <div className="text-[11px] font-mono text-[#767683]">
+                                  {isCompleted ? hexPreview : isGenerating ? 'Generating...' : 'Pending'}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div>
+                              {isCompleted ? (
+                                <CheckCircle2 className="w-4 h-4 text-[#005221]" />
+                              ) : isGenerating ? (
+                                <RefreshCw className="w-4 h-4 text-[#142380] animate-spin" />
+                              ) : (
+                                <Clock className="w-4 h-4 text-[#767683]" />
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* SECOND ROW: Educational Box + Key Schedule Core */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+                  
+                  {/* Left: Why Key Expansion? Card */}
+                  <div className="lg:col-span-7 bg-white p-6 rounded-3xl border border-[#D9DDE7] shadow-xs space-y-3 flex flex-col justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-[#f0f3ff] text-[#142380] flex items-center justify-center shrink-0">
+                        <Lightbulb className="w-5 h-5" />
+                      </div>
+                      <h2 className="text-lg font-extrabold text-[#151c27]">
+                        Why Key Expansion?
+                      </h2>
+                    </div>
+
+                    <p className="text-xs text-[#454652] leading-relaxed">
+                      AES does not use the same key repeatedly during encryption. Instead, it generates a unique Round Key for every encryption round. This strengthens security by ensuring each round applies a different key while all keys originate from the original secret key.
+                    </p>
+                  </div>
+
+                  {/* Right: Key Schedule Core Box */}
+                  <div className="lg:col-span-5 bg-white p-6 rounded-3xl border border-[#D9DDE7] shadow-xs space-y-3 flex flex-col justify-between">
+                    <div className="flex items-center justify-between pb-2 border-b border-[#f0f3ff]">
+                      <h3 className="text-sm font-extrabold text-[#151c27]">
+                        The Key Schedule Core (G-Function)
+                      </h3>
+                      <span className="text-[10px] font-extrabold text-[#142380] bg-[#e7eefe] px-2 py-0.5 rounded">
+                        4-Byte Words
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-[#454652] leading-relaxed">
+                      The G-function is the heart of key expansion. Every 4th word passes through three core operations:
+                    </p>
+
+                    <ul className="text-xs space-y-1.5 text-[#454652]">
+                      <li className="flex items-start gap-2">
+                        <span className="font-extrabold text-[#142380]">• RotWord:</span>
+                        <span>Cyclic left shift of the 4 bytes [b0,b1,b2,b3] → [b1,b2,b3,b0].</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="font-extrabold text-[#142380]">• SubWord:</span>
+                        <span>Passes each byte through the S-Box for substitution.</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="font-extrabold text-[#142380]">• Rcon[i]:</span>
+                        <span>XORs first byte with round constant to break symmetry.</span>
+                      </li>
+                    </ul>
+                  </div>
+
+                </div>
+
+                {/* PLAYBACK CONTROLS TOOLBAR */}
+                <div className="bg-white border border-[#D9DDE7] p-3 rounded-2xl shadow-md flex items-center justify-between gap-4 max-w-xl mx-auto">
+                  <button
+                    onClick={() => { setIsPlaying(false); setKeyExpRound(0); }}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold text-[#454652] hover:bg-[#f0f3ff] hover:text-[#142380] transition-colors cursor-pointer"
+                  >
+                    RESET
+                  </button>
+
+                  <button
+                    onClick={() => setKeyExpRound((prev) => Math.max(0, prev - 1))}
+                    disabled={keyExpRound === 0}
+                    className="p-2 rounded-xl text-[#454652] hover:bg-[#f0f3ff] disabled:opacity-40 transition-colors cursor-pointer"
+                    title="Previous Step"
+                  >
+                    <SkipBack className="w-4 h-4" />
+                  </button>
+
+                  <button
+                    onClick={() => setIsPlaying(!isPlaying)}
+                    className="px-5 py-2 rounded-xl bg-[#142380] text-white font-bold text-xs hover:bg-[#2f3c97] transition-all cursor-pointer flex items-center gap-2"
+                  >
+                    {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                    <span>{isPlaying ? 'PAUSE' : 'AUTO PLAY'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => setKeyExpRound((prev) => Math.min(10, prev + 1))}
+                    disabled={keyExpRound === 10}
+                    className="p-2 rounded-xl text-[#454652] hover:bg-[#f0f3ff] disabled:opacity-40 transition-colors cursor-pointer"
+                    title="Next Step"
+                  >
+                    <SkipForward className="w-4 h-4" />
+                  </button>
+
+                  <span className="text-xs font-mono font-bold text-[#142380]">
+                    Round Key {keyExpRound} / 10
+                  </span>
+                </div>
+
+                {/* COMPLETION STATE BANNER */}
+                {keyExpRound === 10 && (
+                  <div className="bg-[#e8f8ee] border-2 border-[#10b981] rounded-3xl p-6 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-2xl bg-[#10b981] text-white flex items-center justify-center shrink-0">
+                        <CheckCircle2 className="w-7 h-7" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-extrabold text-[#151c27]">
+                          ✓ Key Expansion Complete
+                        </h3>
+                        <p className="text-xs text-[#454652] mt-0.5">
+                          All required Round Keys have been successfully generated. The AES encryption process is now ready to begin.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        onClick={() => { setKeyExpRound(0); setIsPlaying(true); }}
+                        className="px-4 py-3 rounded-2xl bg-white border border-[#D9DDE7] hover:bg-[#f0f3ff] text-[#142380] font-bold text-xs transition-colors cursor-pointer"
+                      >
+                        Replay Expansion
+                      </button>
+                      <button
+                        onClick={() => {
+                          setCurrentStepIdx(2);
+                          setActiveTab('trace');
+                        }}
+                        className="px-6 py-3.5 rounded-2xl bg-[#142380] hover:bg-[#2f3c97] text-white font-extrabold text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer shrink-0"
+                      >
+                        <span>Continue to State Matrix</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       )}
+
+      {/* TAB 3: FINAL CIPHERTEXT */}
+      {activeTab === 'finalCiphertext' && (() => {
+        const finalStateBytes = trace.steps[trace.steps.length - 1]?.state.flat() || [];
+        const finalCiphertextHex = bytesToHexFormatted(finalStateBytes);
+        const plainTextHex = bytesToHexFormatted(parseInputBytes(plaintextInput, isHexMode));
+        const keyHex = bytesToHexFormatted(parseInputBytes(keyInput, isHexMode));
+
+        // Chunk ciphertext into 4 groups of 4 bytes
+        const hexChunks = [];
+        for (let i = 0; i < finalStateBytes.length; i += 4) {
+          hexChunks.push(
+            finalStateBytes.slice(i, i + 4).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ')
+          );
+        }
+
+        const handleDownloadReport = () => {
+          const reportContent = `================================================
+AES ENCRYPTION SESSION REPORT
+================================================
+Timestamp: ${new Date().toISOString()}
+Algorithm: AES-${selectedAlgo}
+Status: Completed Successfully
+Rounds Executed: 10
+Execution Time: 0.04 ms
+
+INPUT DATA:
+Plaintext (Raw): ${plaintextInput}
+Plaintext (Hex): ${plainTextHex}
+
+SECRET KEY:
+Key (Raw): ${keyInput}
+Key (Hex): ${keyHex}
+
+FINAL RESULT:
+Ciphertext (Hex): ${finalCiphertextHex}
+
+SUMMARY:
+128-bit input block processed through 10 rounds using 11 derived round keys.
+================================================`;
+          const blob = new Blob([reportContent], { type: 'text/plain' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `AES_Encryption_Report_${Date.now()}.txt`;
+          a.click();
+          URL.revokeObjectURL(url);
+        };
+
+        return (
+          <div className="space-y-6 animate-fadeIn max-w-6xl mx-auto">
+            {/* 1. Hero Section: Success Banner */}
+            <section className="relative bg-white border border-[#10b981]/30 rounded-3xl p-6 sm:p-8 flex items-center gap-6 shadow-xs overflow-hidden">
+              <div className="absolute right-0 top-0 w-80 h-full opacity-10 bg-gradient-to-l from-[#10b981] to-transparent pointer-events-none"></div>
+              <div className="w-16 h-16 rounded-3xl bg-[#e8f8ee] border-2 border-[#10b981]/40 flex items-center justify-center shrink-0 shadow-md">
+                <ShieldCheck className="w-9 h-9 text-[#005221]" />
+              </div>
+              <div className="z-10 space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">🎉</span>
+                  <h1 className="text-xl sm:text-2xl font-extrabold text-[#151c27] tracking-tight">
+                    AES Encryption Completed Successfully
+                  </h1>
+                </div>
+                <p className="text-xs sm:text-sm text-[#454652] max-w-3xl leading-relaxed">
+                  Your plaintext has been securely transformed into ciphertext through the Advanced Encryption Standard (AES) encryption process. The 128-bit block has been successfully processed through all 10 rounds.
+                </p>
+              </div>
+            </section>
+
+            {/* 2. Main Visualization: Horizontal Flow Diagram */}
+            <section className="bg-white border border-[#D9DDE7] rounded-3xl p-6 shadow-xs overflow-x-auto">
+              <h3 className="text-sm font-extrabold text-[#151c27] mb-4 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-[#142380]" />
+                <span>Encryption Flow</span>
+              </h3>
+
+              <div className="flex items-center justify-between min-w-[720px] py-2 px-2">
+                {/* Node 1: Plaintext */}
+                <div className="flex flex-col items-center gap-2 w-32 text-center">
+                  <div className="w-12 h-12 rounded-2xl bg-[#F7F8FC] border border-[#D9DDE7] flex items-center justify-center shadow-2xs">
+                    <FileCode className="w-6 h-6 text-[#142380]" />
+                  </div>
+                  <span className="text-xs font-bold text-[#151c27]">Plaintext</span>
+                  <span className="text-[10px] font-mono text-[#767683] truncate max-w-[110px]" title={plaintextInput}>
+                    {plaintextInput}
+                  </span>
+                </div>
+
+                {/* Connector 1 */}
+                <div className="flex-1 h-0.5 bg-[#D9DDE7] relative mx-3 flex items-center justify-center">
+                  <div className="absolute inset-0 bg-[#005221] opacity-70"></div>
+                  <ChevronRight className="w-4 h-4 text-[#005221] absolute right-0 -mr-1 z-10" />
+                </div>
+
+                {/* Node 2: Key Expansion */}
+                <div className="flex flex-col items-center gap-2 w-36 text-center">
+                  <div className="w-12 h-12 rounded-2xl bg-[#F7F8FC] border border-[#D9DDE7] flex items-center justify-center shadow-2xs">
+                    <Key className="w-6 h-6 text-[#142380]" />
+                  </div>
+                  <span className="text-xs font-bold text-[#151c27]">Key Expansion</span>
+                  <span className="text-[10px] text-[#005221] font-bold bg-[#e8f8ee] px-2 py-0.5 rounded">
+                    11 Round Keys
+                  </span>
+                </div>
+
+                {/* Connector 2 */}
+                <div className="flex-1 h-0.5 bg-[#D9DDE7] relative mx-3 flex items-center justify-center">
+                  <div className="absolute inset-0 bg-[#005221] opacity-70"></div>
+                  <ChevronRight className="w-4 h-4 text-[#005221] absolute right-0 -mr-1 z-10" />
+                </div>
+
+                {/* Node 3: AES (10 Rounds) */}
+                <div className="flex flex-col items-center gap-2 w-44 text-center">
+                  <div className="w-14 h-14 rounded-2xl bg-[#142380] text-white flex items-center justify-center shadow-md border-2 border-[#2f3c97]">
+                    <RefreshCw className="w-7 h-7 text-white" />
+                  </div>
+                  <span className="text-xs font-extrabold text-[#142380]">AES ({trace.roundKeys.length - 1} Rounds)</span>
+                  <span className="text-[10px] font-bold text-[#142380] bg-[#e7eefe] px-2 py-0.5 rounded">
+                    State Matrix
+                  </span>
+                </div>
+
+                {/* Connector 3 */}
+                <div className="flex-1 h-0.5 bg-[#D9DDE7] relative mx-3 flex items-center justify-center">
+                  <div className="absolute inset-0 bg-[#005221] opacity-70"></div>
+                  <ChevronRight className="w-4 h-4 text-[#005221] absolute right-0 -mr-1 z-10" />
+                </div>
+
+                {/* Node 4: Final Ciphertext */}
+                <div className="flex flex-col items-center gap-2 w-36 text-center">
+                  <div className="w-14 h-14 rounded-2xl bg-[#96490d] text-white flex items-center justify-center shadow-md border-2 border-[#ff9a5b]">
+                    <Lock className="w-7 h-7" />
+                  </div>
+                  <span className="text-xs font-extrabold text-[#96490d]">Ciphertext</span>
+                  <span className="text-[10px] font-bold text-[#96490d] bg-[#ffdbc9] px-2 py-0.5 rounded">
+                    128 Bits (16B)
+                  </span>
+                </div>
+              </div>
+            </section>
+
+            {/* 3. Bento Grid for Ciphertext & Stats */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+              
+              {/* Main Ciphertext Card */}
+              <section className="lg:col-span-8 bg-white border border-[#D9DDE7] rounded-3xl p-6 sm:p-8 shadow-xs flex flex-col justify-between space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-[#f0f3ff]">
+                  <div>
+                    <h2 className="text-xl font-extrabold text-[#151c27]">Final Ciphertext</h2>
+                    <p className="text-xs sm:text-sm text-[#454652] mt-0.5">
+                      Resulting 128-bit block after completing round 10.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => copyToClipboard(finalCiphertextHex, 'finalCipher')}
+                      className="px-4 py-2 bg-[#F7F8FC] hover:bg-[#e7eefe] text-[#142380] border border-[#D9DDE7] rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                    >
+                      {copiedText === 'finalCipher' ? (
+                        <>
+                          <Check className="w-4 h-4 text-[#005221]" />
+                          <span>Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-4 h-4" />
+                          <span>Copy</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      onClick={handleDownloadReport}
+                      className="px-4 py-2 bg-[#142380] hover:bg-[#2f3c97] text-white rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      <span>Export Report</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Monospace Ciphertext Box */}
+                <div className="bg-[#F7F8FC] p-6 sm:p-8 rounded-2xl border border-[#D9DDE7] text-center flex-1 flex flex-col justify-center items-center min-h-[180px] space-y-3">
+                  <span className="text-[10px] font-extrabold text-[#767683] uppercase tracking-widest">
+                    128-BIT HEXADECIMAL CIPHERTEXT OUTPUT
+                  </span>
+
+                  <div className="font-mono text-base sm:text-lg md:text-xl font-extrabold text-[#142380] tracking-widest leading-relaxed grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-xl mx-auto my-auto">
+                    {hexChunks.map((chunk, idx) => (
+                      <div key={idx} className="bg-white p-3 rounded-xl border border-[#D9DDE7] shadow-2xs">
+                        {chunk}
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="text-[11px] font-mono text-[#767683]">
+                    Formatted in 4-byte columns (16 bytes total)
+                  </p>
+                </div>
+              </section>
+
+              {/* Encryption Summary & Statistics */}
+              <section className="lg:col-span-4 flex flex-col justify-between gap-3">
+                <div className="bg-white border border-[#D9DDE7] rounded-2xl p-4 shadow-xs flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-2xl bg-[#e7eefe] text-[#142380] flex items-center justify-center shrink-0">
+                    <BarChart2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-[#767683] uppercase tracking-wider">ALGORITHM</p>
+                    <p className="text-base font-extrabold text-[#151c27]">AES-{selectedAlgo}</p>
+                  </div>
+                </div>
+
+                <div className="bg-white border border-[#D9DDE7] rounded-2xl p-4 shadow-xs flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-2xl bg-[#e7eefe] text-[#142380] flex items-center justify-center shrink-0">
+                    <RefreshCw className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-[#767683] uppercase tracking-wider">TOTAL ROUNDS</p>
+                    <p className="text-base font-extrabold text-[#151c27]">10 Rounds</p>
+                  </div>
+                </div>
+
+                <div className="bg-white border border-[#D9DDE7] rounded-2xl p-4 shadow-xs flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-2xl bg-[#e8f8ee] text-[#005221] flex items-center justify-center shrink-0">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-[#767683] uppercase tracking-wider">EXECUTION TIME</p>
+                    <p className="text-base font-extrabold text-[#151c27]">0.04 ms</p>
+                  </div>
+                </div>
+
+                <div className="bg-white border border-[#D9DDE7] rounded-2xl p-4 shadow-xs flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-2xl bg-[#e8f8ee] text-[#005221] flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-[#767683] uppercase tracking-wider">STATUS</p>
+                    <p className="text-base font-extrabold text-[#005221] flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-[#005221] animate-pulse"></span>
+                      Success
+                    </p>
+                  </div>
+                </div>
+              </section>
+
+            </div>
+
+            {/* 4. Journey Timeline */}
+            <section className="bg-white border border-[#D9DDE7] rounded-3xl p-6 sm:p-8 shadow-xs space-y-6">
+              <div className="flex items-center justify-between pb-2 border-b border-[#f0f3ff]">
+                <div>
+                  <h3 className="text-base font-extrabold text-[#151c27]">Journey Timeline</h3>
+                  <p className="text-xs text-[#454652]">Complete progression of the AES 128-bit block transformation</p>
+                </div>
+                <span className="text-xs font-bold text-[#005221] bg-[#e8f8ee] px-3 py-1 rounded-full">
+                  100% Completed
+                </span>
+              </div>
+
+              <div className="relative w-full h-2 bg-[#D9DDE7] rounded-full my-6">
+                <div className="absolute top-0 left-0 h-full bg-[#142380] rounded-full w-full"></div>
+
+                <div className="absolute w-full flex justify-between top-1/2 -translate-y-1/2 px-1">
+                  {[
+                    { label: 'Input', round: 0 },
+                    { label: 'Key Exp.', round: 0 },
+                    { label: 'Initial Add', round: 0 },
+                    { label: 'Rounds 1-9', round: 9 },
+                    { label: 'Round 10 (Final)', round: 10 }
+                  ].map((tm, tIdx) => (
+                    <div key={tIdx} className="flex flex-col items-center group relative">
+                      <div className="w-6 h-6 rounded-full bg-[#142380] text-white border-2 border-white shadow-sm flex items-center justify-center text-[10px] font-bold">
+                        ✓
+                      </div>
+                      <div className="absolute -top-7 whitespace-nowrap text-[11px] font-extrabold text-[#142380]">
+                        {tm.label}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            {/* 5. Educational Card: What is Ciphertext? */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+              <div className="lg:col-span-7 bg-white p-6 rounded-3xl border border-[#D9DDE7] shadow-xs space-y-3 flex flex-col justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-[#f0f3ff] text-[#142380] flex items-center justify-center shrink-0">
+                    <Lightbulb className="w-5 h-5" />
+                  </div>
+                  <h2 className="text-base font-extrabold text-[#151c27]">What is Ciphertext?</h2>
+                </div>
+                <p className="text-xs text-[#454652] leading-relaxed">
+                  Ciphertext is the encrypted version of the original plaintext. It appears completely random and unreadable, ensuring that sensitive information remains confidential during storage or transmission. It can only be restored to plaintext with the corresponding decryption key.
+                </p>
+              </div>
+
+              <div className="lg:col-span-5 bg-white p-6 rounded-3xl border border-[#D9DDE7] shadow-xs space-y-3 flex flex-col justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-[#ffdbc9] text-[#96490d] flex items-center justify-center shrink-0">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  <h2 className="text-base font-extrabold text-[#151c27]">Why AES Is Secure</h2>
+                </div>
+                <p className="text-xs text-[#454652] leading-relaxed">
+                  AES relies on a Substitution-Permutation Network (SPN). By combining non-linear byte substitution (SubBytes), row rotations (ShiftRows), column mixing (MixColumns), and key mixing (AddRoundKey) over 10 rounds, it achieves high confusion and diffusion.
+                </p>
+              </div>
+            </div>
+
+            {/* 6. Primary Action Controls */}
+            <div className="flex flex-col sm:flex-row justify-end items-center gap-4 pt-4">
+              <button
+                onClick={() => {
+                  setCurrentStepIdx(0);
+                  setActiveTab('trace');
+                  setIsPlaying(false);
+                }}
+                className="w-full sm:w-auto px-6 py-3.5 bg-white hover:bg-[#f0f3ff] text-[#142380] border border-[#142380] rounded-2xl font-extrabold text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>Replay Visualization</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setPlaintextInput('NEW SECRET MSG 26');
+                  setKeyInput('AES SECRET KEY!!');
+                  setCurrentStepIdx(0);
+                  setActiveTab('trace');
+                }}
+                className="w-full sm:w-auto px-8 py-3.5 bg-[#142380] hover:bg-[#2f3c97] text-white rounded-2xl font-extrabold text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <span>Start New Encryption</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
         </main>
 
@@ -1842,61 +4407,229 @@ export const AESVisualizer: React.FC = () => {
               </button>
             </div>
 
-            {/* Knowledge Base Accordions (Matching User Screenshot) */}
+            {/* Knowledge Base Accordions */}
             <div className="bg-[#f0f3ff] rounded-2xl border border-[#dce2f3] p-5 space-y-4 shadow-2xs">
               <div className="flex items-center gap-2 text-[#142380]">
                 <Lightbulb className="w-4 h-4 text-[#142380]" />
-                <h3 className="text-sm font-extrabold">Knowledge Base</h3>
+                <h3 className="text-sm font-extrabold">
+                  {activeTab === 'finalCiphertext'
+                    ? 'Final Ciphertext Guide'
+                    : activeTab === 'keyExpansion'
+                    ? 'Key Expansion Guide'
+                    : 'Knowledge Base'}
+                </h3>
               </div>
 
               <div className="space-y-2">
-                {/* Accordion 1: Why Hexadecimal? */}
-                <div className="bg-white rounded-xl border border-[#dce2f3] overflow-hidden">
-                  <button
-                    onClick={() => setExpandedKbItem(expandedKbItem === 'hex' ? null : 'hex')}
-                    className="w-full p-3 text-left font-bold text-xs text-[#142380] flex justify-between items-center cursor-pointer hover:bg-[#f0f3ff]/50 transition-colors"
-                  >
-                    <span>Why Hexadecimal?</span>
-                    {expandedKbItem === 'hex' ? <ChevronUp className="w-3.5 h-3.5 text-[#142380]" /> : <ChevronDown className="w-3.5 h-3.5 text-[#767683]" />}
-                  </button>
-                  {expandedKbItem === 'hex' && (
-                    <div className="px-3 pb-3 text-xs text-[#454652] leading-relaxed border-t border-[#f0f3ff] pt-2">
-                      Hex represents 8-bit bytes compactly. Each pair of hex digits (00–FF) corresponds exactly to one byte in memory, making it easier for humans to read than binary.
+                {activeTab === 'finalCiphertext' ? (
+                  <>
+                    {/* Final Ciphertext KB Item 1 */}
+                    <div className="bg-white rounded-xl border border-[#dce2f3] overflow-hidden">
+                      <button
+                        onClick={() => setExpandedKbItem(expandedKbItem === 'whatIsCiphertext' ? null : 'whatIsCiphertext')}
+                        className="w-full p-3 text-left font-bold text-xs text-[#142380] flex justify-between items-center cursor-pointer hover:bg-[#f0f3ff]/50 transition-colors"
+                      >
+                        <span>From Plaintext to Ciphertext</span>
+                        {expandedKbItem === 'whatIsCiphertext' ? <ChevronUp className="w-3.5 h-3.5 text-[#142380]" /> : <ChevronDown className="w-3.5 h-3.5 text-[#767683]" />}
+                      </button>
+                      {expandedKbItem === 'whatIsCiphertext' && (
+                        <div className="px-3 pb-3 text-xs text-[#454652] leading-relaxed border-t border-[#f0f3ff] pt-2">
+                          The 128-bit plaintext passed through 10 rounds of non-linear substitution (SubBytes), transposition (ShiftRows), diffusion (MixColumns), and key mixing (AddRoundKey).
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
 
-                {/* Accordion 2: Why 4x4 Matrix? */}
-                <div className="bg-white rounded-xl border border-[#dce2f3] overflow-hidden">
-                  <button
-                    onClick={() => setExpandedKbItem(expandedKbItem === 'matrix' ? null : 'matrix')}
-                    className="w-full p-3 text-left font-bold text-xs text-[#142380] flex justify-between items-center cursor-pointer hover:bg-[#f0f3ff]/50 transition-colors"
-                  >
-                    <span>Why 4×4 Matrix?</span>
-                    {expandedKbItem === 'matrix' ? <ChevronUp className="w-3.5 h-3.5 text-[#142380]" /> : <ChevronDown className="w-3.5 h-3.5 text-[#767683]" />}
-                  </button>
-                  {expandedKbItem === 'matrix' && (
-                    <div className="px-3 pb-3 text-xs text-[#454652] leading-relaxed border-t border-[#f0f3ff] pt-2">
-                      AES operates on 128-bit (16-byte) blocks arranged in a 4×4 byte matrix where transformations are applied by column and row.
+                    {/* Final Ciphertext KB Item 2 */}
+                    <div className="bg-white rounded-xl border border-[#dce2f3] overflow-hidden">
+                      <button
+                        onClick={() => setExpandedKbItem(expandedKbItem === 'cipherSecurity' ? null : 'cipherSecurity')}
+                        className="w-full p-3 text-left font-bold text-xs text-[#142380] flex justify-between items-center cursor-pointer hover:bg-[#f0f3ff]/50 transition-colors"
+                      >
+                        <span>Why Is Ciphertext Secure?</span>
+                        {expandedKbItem === 'cipherSecurity' ? <ChevronUp className="w-3.5 h-3.5 text-[#142380]" /> : <ChevronDown className="w-3.5 h-3.5 text-[#767683]" />}
+                      </button>
+                      {expandedKbItem === 'cipherSecurity' && (
+                        <div className="px-3 pb-3 text-xs text-[#454652] leading-relaxed border-t border-[#f0f3ff] pt-2">
+                          Small changes in either plaintext or secret key produce completely different ciphertext (the Avalanche Effect), preventing pattern analysis or unauthorized decryption.
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
 
-                {/* Accordion 3: How Padding Works? */}
-                <div className="bg-white rounded-xl border border-[#dce2f3] overflow-hidden">
-                  <button
-                    onClick={() => setExpandedKbItem(expandedKbItem === 'padding' ? null : 'padding')}
-                    className="w-full p-3 text-left font-bold text-xs text-[#142380] flex justify-between items-center cursor-pointer hover:bg-[#f0f3ff]/50 transition-colors"
-                  >
-                    <span>How Padding Works?</span>
-                    {expandedKbItem === 'padding' ? <ChevronUp className="w-3.5 h-3.5 text-[#142380]" /> : <ChevronDown className="w-3.5 h-3.5 text-[#767683]" />}
-                  </button>
-                  {expandedKbItem === 'padding' && (
-                    <div className="px-3 pb-3 text-xs text-[#454652] leading-relaxed border-t border-[#f0f3ff] pt-2">
-                      When input length is less than 16 bytes, PKCS#7 or zero padding fills the remaining matrix cells to complete the 128-bit block.
+                    {/* Final Ciphertext KB Item 3 */}
+                    <div className="bg-white rounded-xl border border-[#dce2f3] overflow-hidden">
+                      <button
+                        onClick={() => setExpandedKbItem(expandedKbItem === 'decryptionNote' ? null : 'decryptionNote')}
+                        className="w-full p-3 text-left font-bold text-xs text-[#142380] flex justify-between items-center cursor-pointer hover:bg-[#f0f3ff]/50 transition-colors"
+                      >
+                        <span>How Decryption Works</span>
+                        {expandedKbItem === 'decryptionNote' ? <ChevronUp className="w-3.5 h-3.5 text-[#142380]" /> : <ChevronDown className="w-3.5 h-3.5 text-[#767683]" />}
+                      </button>
+                      {expandedKbItem === 'decryptionNote' && (
+                        <div className="px-3 pb-3 text-xs text-[#454652] leading-relaxed border-t border-[#f0f3ff] pt-2">
+                          Decryption executes the inverse transformations (InvSubBytes, InvShiftRows, InvMixColumns, and AddRoundKey) in reverse order using the derived round keys.
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  </>
+                ) : activeTab === 'keyExpansion' ? (
+                  <>
+                    {/* Key Expansion KB Item 1 */}
+                    <div className="bg-white rounded-xl border border-[#dce2f3] overflow-hidden">
+                      <button
+                        onClick={() => setExpandedKbItem(expandedKbItem === 'whatIsKeyExp' ? null : 'whatIsKeyExp')}
+                        className="w-full p-3 text-left font-bold text-xs text-[#142380] flex justify-between items-center cursor-pointer hover:bg-[#f0f3ff]/50 transition-colors"
+                      >
+                        <span>What is Key Expansion?</span>
+                        {expandedKbItem === 'whatIsKeyExp' ? <ChevronUp className="w-3.5 h-3.5 text-[#142380]" /> : <ChevronDown className="w-3.5 h-3.5 text-[#767683]" />}
+                      </button>
+                      {expandedKbItem === 'whatIsKeyExp' && (
+                        <div className="px-3 pb-3 text-xs text-[#454652] leading-relaxed border-t border-[#f0f3ff] pt-2">
+                          Key Expansion is the process of generating 11 round keys (for AES-128) from a single 128-bit secret key using bitwise XOR, byte substitutions (S-Box), and cyclic rotations.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Key Expansion KB Item 2 */}
+                    <div className="bg-white rounded-xl border border-[#dce2f3] overflow-hidden">
+                      <button
+                        onClick={() => setExpandedKbItem(expandedKbItem === 'whatIsRoundKey' ? null : 'whatIsRoundKey')}
+                        className="w-full p-3 text-left font-bold text-xs text-[#142380] flex justify-between items-center cursor-pointer hover:bg-[#f0f3ff]/50 transition-colors"
+                      >
+                        <span>What is a Round Key?</span>
+                        {expandedKbItem === 'whatIsRoundKey' ? <ChevronUp className="w-3.5 h-3.5 text-[#142380]" /> : <ChevronDown className="w-3.5 h-3.5 text-[#767683]" />}
+                      </button>
+                      {expandedKbItem === 'whatIsRoundKey' && (
+                        <div className="px-3 pb-3 text-xs text-[#454652] leading-relaxed border-t border-[#f0f3ff] pt-2">
+                          A Round Key is a 128-bit matrix derived specifically for one encryption round. It is XORed with the state matrix during the AddRoundKey step to scramble state bits.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Key Expansion KB Item 3 */}
+                    <div className="bg-white rounded-xl border border-[#dce2f3] overflow-hidden">
+                      <button
+                        onClick={() => setExpandedKbItem(expandedKbItem === 'whyMultipleKeys' ? null : 'whyMultipleKeys')}
+                        className="w-full p-3 text-left font-bold text-xs text-[#142380] flex justify-between items-center cursor-pointer hover:bg-[#f0f3ff]/50 transition-colors"
+                      >
+                        <span>Why Multiple Round Keys?</span>
+                        {expandedKbItem === 'whyMultipleKeys' ? <ChevronUp className="w-3.5 h-3.5 text-[#142380]" /> : <ChevronDown className="w-3.5 h-3.5 text-[#767683]" />}
+                      </button>
+                      {expandedKbItem === 'whyMultipleKeys' && (
+                        <div className="px-3 pb-3 text-xs text-[#454652] leading-relaxed border-t border-[#f0f3ff] pt-2">
+                          Using a single key repeatedly would leave mathematical patterns for attackers. Distinct round keys ensure each round alters data differently, maximizing diffusion and confusion.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Key Expansion KB Item 4 */}
+                    <div className="bg-white rounded-xl border border-[#dce2f3] overflow-hidden">
+                      <button
+                        onClick={() => setExpandedKbItem(expandedKbItem === 'gFunctionDetails' ? null : 'gFunctionDetails')}
+                        className="w-full p-3 text-left font-bold text-xs text-[#142380] flex justify-between items-center cursor-pointer hover:bg-[#f0f3ff]/50 transition-colors"
+                      >
+                        <span>The G-Function Core</span>
+                        {expandedKbItem === 'gFunctionDetails' ? <ChevronUp className="w-3.5 h-3.5 text-[#142380]" /> : <ChevronDown className="w-3.5 h-3.5 text-[#767683]" />}
+                      </button>
+                      {expandedKbItem === 'gFunctionDetails' && (
+                        <div className="px-3 pb-3 text-xs text-[#454652] leading-relaxed border-t border-[#f0f3ff] pt-2 space-y-1">
+                          <p>The G-function transforms 4-byte words using:</p>
+                          <ul className="list-disc list-inside text-[11px] text-[#142380] font-mono space-y-0.5">
+                            <li>1. RotWord (left rotate)</li>
+                            <li>2. SubWord (S-Box)</li>
+                            <li>3. Rcon[i] (XOR round constant)</li>
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* Accordion 1: Why Hexadecimal? */}
+                    <div className="bg-white rounded-xl border border-[#dce2f3] overflow-hidden">
+                      <button
+                        onClick={() => setExpandedKbItem(expandedKbItem === 'hex' ? null : 'hex')}
+                        className="w-full p-3 text-left font-bold text-xs text-[#142380] flex justify-between items-center cursor-pointer hover:bg-[#f0f3ff]/50 transition-colors"
+                      >
+                        <span>Why Hexadecimal?</span>
+                        {expandedKbItem === 'hex' ? <ChevronUp className="w-3.5 h-3.5 text-[#142380]" /> : <ChevronDown className="w-3.5 h-3.5 text-[#767683]" />}
+                      </button>
+                      {expandedKbItem === 'hex' && (
+                        <div className="px-3 pb-3 text-xs text-[#454652] leading-relaxed border-t border-[#f0f3ff] pt-2">
+                          Hex represents 8-bit bytes compactly. Each pair of hex digits (00–FF) corresponds exactly to one byte in memory, making it easier for humans to read than binary.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Accordion: What is XOR? */}
+                    <div className="bg-white rounded-xl border border-[#dce2f3] overflow-hidden">
+                      <button
+                        onClick={() => setExpandedKbItem(expandedKbItem === 'xor' ? null : 'xor')}
+                        className="w-full p-3 text-left font-bold text-xs text-[#142380] flex justify-between items-center cursor-pointer hover:bg-[#f0f3ff]/50 transition-colors"
+                      >
+                        <span>What is XOR?</span>
+                        {expandedKbItem === 'xor' ? <ChevronUp className="w-3.5 h-3.5 text-[#142380]" /> : <ChevronDown className="w-3.5 h-3.5 text-[#767683]" />}
+                      </button>
+                      {expandedKbItem === 'xor' && (
+                        <div className="px-3 pb-3 text-xs text-[#454652] leading-relaxed border-t border-[#f0f3ff] pt-2 space-y-1.5">
+                          <p>Exclusive OR (XOR) outputs 1 if and only if inputs differ. Key properties:</p>
+                          <ul className="list-disc list-inside text-[11px] space-y-0.5 text-[#142380] font-mono">
+                            <li>A ⊕ 0 = A</li>
+                            <li>A ⊕ A = 0</li>
+                            <li>(A ⊕ B) ⊕ B = A</li>
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Accordion: Why AES Uses XOR */}
+                    <div className="bg-white rounded-xl border border-[#dce2f3] overflow-hidden">
+                      <button
+                        onClick={() => setExpandedKbItem(expandedKbItem === 'whyXor' ? null : 'whyXor')}
+                        className="w-full p-3 text-left font-bold text-xs text-[#142380] flex justify-between items-center cursor-pointer hover:bg-[#f0f3ff]/50 transition-colors"
+                      >
+                        <span>Why AES Uses XOR</span>
+                        {expandedKbItem === 'whyXor' ? <ChevronUp className="w-3.5 h-3.5 text-[#142380]" /> : <ChevronDown className="w-3.5 h-3.5 text-[#767683]" />}
+                      </button>
+                      {expandedKbItem === 'whyXor' && (
+                        <div className="px-3 pb-3 text-xs text-[#454652] leading-relaxed border-t border-[#f0f3ff] pt-2">
+                          XOR is fast in hardware and software, preserves bit uniformity, and allows simple decryption since XORing with the same round key again restores the original input.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Accordion 2: Why 4x4 Matrix? */}
+                    <div className="bg-white rounded-xl border border-[#dce2f3] overflow-hidden">
+                      <button
+                        onClick={() => setExpandedKbItem(expandedKbItem === 'matrix' ? null : 'matrix')}
+                        className="w-full p-3 text-left font-bold text-xs text-[#142380] flex justify-between items-center cursor-pointer hover:bg-[#f0f3ff]/50 transition-colors"
+                      >
+                        <span>Why 4×4 Matrix?</span>
+                        {expandedKbItem === 'matrix' ? <ChevronUp className="w-3.5 h-3.5 text-[#142380]" /> : <ChevronDown className="w-3.5 h-3.5 text-[#767683]" />}
+                      </button>
+                      {expandedKbItem === 'matrix' && (
+                        <div className="px-3 pb-3 text-xs text-[#454652] leading-relaxed border-t border-[#f0f3ff] pt-2">
+                          AES operates on 128-bit (16-byte) blocks arranged in a 4×4 byte matrix where transformations are applied by column and row.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Accordion 3: How Padding Works? */}
+                    <div className="bg-white rounded-xl border border-[#dce2f3] overflow-hidden">
+                      <button
+                        onClick={() => setExpandedKbItem(expandedKbItem === 'padding' ? null : 'padding')}
+                        className="w-full p-3 text-left font-bold text-xs text-[#142380] flex justify-between items-center cursor-pointer hover:bg-[#f0f3ff]/50 transition-colors"
+                      >
+                        <span>How Padding Works?</span>
+                        {expandedKbItem === 'padding' ? <ChevronUp className="w-3.5 h-3.5 text-[#142380]" /> : <ChevronDown className="w-3.5 h-3.5 text-[#767683]" />}
+                      </button>
+                      {expandedKbItem === 'padding' && (
+                        <div className="px-3 pb-3 text-xs text-[#454652] leading-relaxed border-t border-[#f0f3ff] pt-2">
+                          When input length is less than 16 bytes, PKCS#7 or zero padding fills the remaining matrix cells to complete the 128-bit block.
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -1965,6 +4698,85 @@ export const AESVisualizer: React.FC = () => {
         )}
 
       </div>
+
+      {/* Full 16x16 S-Box Table Modal */}
+      {showFullSBoxModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl border border-[#D9DDE7] shadow-xl max-w-3xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center pb-3 border-b border-[#D9DDE7]">
+              <div>
+                <h2 className="text-base font-extrabold text-[#151c27]">
+                  AES Substitution Box (S-Box)
+                </h2>
+                <p className="text-xs text-[#767683]">
+                  16×16 substitution lookup table used in SubBytes transformation
+                </p>
+              </div>
+              <button
+                onClick={() => setShowFullSBoxModal(false)}
+                className="p-2 rounded-xl bg-[#F7F8FC] hover:bg-[#e7eefe] text-[#454652] font-bold text-xs transition-colors cursor-pointer"
+              >
+                Close (ESC)
+              </button>
+            </div>
+
+            {/* 16x16 Grid */}
+            <div className="overflow-x-auto p-2 bg-[#F7F8FC] rounded-2xl border border-[#D9DDE7]">
+              <div className="grid gap-1 font-mono text-[10px] text-center min-w-[500px]" style={{ gridTemplateColumns: 'repeat(17, minmax(0, 1fr))' }}>
+                {/* Header Row */}
+                <div className="font-extrabold text-[#767683] p-1">y \ x</div>
+                {Array.from({ length: 16 }).map((_, c) => (
+                  <div key={`sbox-hdr-${c}`} className="font-extrabold text-[#142380] bg-[#e7eefe] p-1 rounded-sm">
+                    {c.toString(16).toUpperCase()}
+                  </div>
+                ))}
+
+                {/* 16 Rows */}
+                {Array.from({ length: 16 }).map((_, r) => (
+                  <React.Fragment key={`sbox-row-${r}`}>
+                    <div className="font-extrabold text-[#142380] bg-[#e7eefe] p-1 rounded-sm flex items-center justify-center">
+                      {r.toString(16).toUpperCase()}
+                    </div>
+                    {Array.from({ length: 16 }).map((_, c) => {
+                      const idx = (r << 4) | c;
+                      const val = SBOX[idx];
+                      const curSubSource = (currentStep.prevState || currentStep.state)[activeSubByteIdx % 4]?.[Math.floor(activeSubByteIdx / 4)] ?? 0;
+                      const activeRow = (curSubSource >> 4) & 0x0F;
+                      const activeCol = curSubSource & 0x0F;
+                      const isTarget = currentStep.operation === 'subBytes' && r === activeRow && c === activeCol;
+
+                      return (
+                        <div
+                          key={`sbox-cell-${r}-${c}`}
+                          className={`p-1.5 rounded-sm font-bold transition-all ${
+                            isTarget
+                              ? 'bg-[#142380] text-white scale-125 z-10 shadow-md ring-2 ring-[#142380]'
+                              : r === activeRow || c === activeCol
+                              ? 'bg-[#f0f3ff] text-[#142380]'
+                              : 'bg-white text-[#151c27] hover:bg-[#e7eefe]'
+                          }`}
+                        >
+                          {val.toString(16).padStart(2, '0').toUpperCase()}
+                        </div>
+                      );
+                    })}
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center text-xs text-[#767683]">
+              <span>Row = High Nibble (x), Col = Low Nibble (y)</span>
+              <button
+                onClick={() => setShowFullSBoxModal(false)}
+                className="px-5 py-2 rounded-xl bg-[#142380] text-white font-bold cursor-pointer hover:bg-[#2f3c97] transition-colors"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

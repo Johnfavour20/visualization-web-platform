@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { NavigationTab } from './types';
+import { NavigationTab, SessionRecord } from './types';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { HeroSection } from './components/HeroSection';
@@ -17,15 +17,24 @@ import { AESBasics } from './components/AESBasics';
 import { DocumentationView } from './components/DocumentationView';
 import { LoginPage } from './components/LoginPage';
 import { LoginModal } from './components/LoginModal';
+import { DashboardView } from './components/DashboardView';
+import { SessionHistoryView } from './components/SessionHistoryView';
+import { SessionDetailsView } from './components/SessionDetailsView';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavigationTab>('home');
   const [isLoginOpen, setIsLoginOpen] = useState<boolean>(false);
+  const [selectedSession, setSelectedSession] = useState<SessionRecord | null>(null);
+
+  const handleSelectSession = (session: SessionRecord) => {
+    setSelectedSession(session);
+    setActiveTab('details');
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-[#f9f9ff] text-[#151c27] font-sans antialiased">
-      {/* Sticky Top Header */}
-      {activeTab !== 'login' && (
+      {/* Sticky Top Header (hidden for login, dashboard, history, details, and basics which have custom dashboard navigation shell) */}
+      {activeTab !== 'login' && activeTab !== 'dashboard' && activeTab !== 'history' && activeTab !== 'details' && activeTab !== 'basics' && (
         <Header
           activeTab={activeTab}
           setActiveTab={setActiveTab}
@@ -43,6 +52,18 @@ export default function App() {
             <StatsSection setActiveTab={setActiveTab} />
             <CTASection setActiveTab={setActiveTab} />
           </div>
+        )}
+
+        {activeTab === 'dashboard' && (
+          <DashboardView setActiveTab={setActiveTab} onSelectSession={handleSelectSession} />
+        )}
+
+        {activeTab === 'history' && (
+          <SessionHistoryView setActiveTab={setActiveTab} onSelectSession={handleSelectSession} />
+        )}
+
+        {activeTab === 'details' && (
+          <SessionDetailsView setActiveTab={setActiveTab} selectedSession={selectedSession} />
         )}
 
         {activeTab === 'basics' && (
@@ -63,7 +84,7 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      {activeTab !== 'login' && (
+      {activeTab !== 'login' && activeTab !== 'dashboard' && activeTab !== 'history' && activeTab !== 'details' && activeTab !== 'basics' && (
         <Footer setActiveTab={setActiveTab} onOpenLogin={() => setIsLoginOpen(true)} />
       )}
 
