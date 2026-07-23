@@ -30,10 +30,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ setActiveTab }) => {
 
           {/* Main Title */}
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-[#1C2340] mb-6 leading-[1.15] tracking-tight">
-            Understand Every Step of AES Encryption Through{' '}
-            <span className="text-[#2f3c97] underline decoration-[#ff9a5b]/40 decoration-wavy">
-              Interactive Visualization
-            </span>
+            Master AES Encryption
           </h1>
 
           {/* Body Description */}
