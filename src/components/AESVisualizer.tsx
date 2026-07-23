@@ -46,6 +46,7 @@ import {
   Eye,
   EyeOff,
   Wand2,
+  Shield,
   ShieldCheck,
   Cpu,
   ArrowDown,
@@ -61,7 +62,13 @@ import {
   RefreshCw
 } from 'lucide-react';
 
-export const AESVisualizer: React.FC = () => {
+import { NavigationTab } from '../types';
+
+interface AESVisualizerProps {
+  setActiveTab: (tab: NavigationTab) => void;
+}
+
+export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) => {
   // Input States
   const [plaintextInput, setPlaintextInput] = useState<string>('HELLO WORLD 2026');
   const [keyInput, setKeyInput] = useState<string>('AES SECRET KEY!!');
@@ -87,7 +94,7 @@ export const AESVisualizer: React.FC = () => {
 
   // View Controls
   const [displayFormat, setDisplayFormat] = useState<DisplayFormat>('hex');
-  const [activeTab, setActiveTab] = useState<'trace' | 'keyExpansion' | 'finalCiphertext'>('trace');
+  const [viewTab, setViewTab] = useState<'trace' | 'keyExpansion' | 'finalCiphertext'>('trace');
   const [copiedText, setCopiedText] = useState<string | null>(null);
   const [hoveredCell, setHoveredCell] = useState<{ r: number; c: number } | null>(null);
 
@@ -148,7 +155,7 @@ export const AESVisualizer: React.FC = () => {
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if (isPlaying) {
-      if (activeTab === 'keyExpansion') {
+      if (viewTab === 'keyExpansion') {
         timer = setInterval(() => {
           setKeyExpRound((prev) => {
             if (prev >= 10) {
@@ -206,7 +213,7 @@ export const AESVisualizer: React.FC = () => {
       }
     }
     return () => clearInterval(timer);
-  }, [isPlaying, activeTab, playSpeedMs, trace.steps, currentStepIdx]);
+  }, [isPlaying, viewTab, playSpeedMs, trace.steps, currentStepIdx]);
 
   const currentStep: StateMatrixStep = trace.steps[currentStepIdx] || trace.steps[0];
 
@@ -411,6 +418,30 @@ export const AESVisualizer: React.FC = () => {
           {isLeftSidebarOpen ? (
             <div className="flex-1 overflow-y-auto space-y-4 pr-1">
               
+              {/* Global Navigation */}
+              <div className="bg-white rounded-2xl border border-[#D9DDE7] p-2 space-y-1 shadow-2xs">
+                <div className="text-[10px] font-bold text-[#767683] uppercase tracking-wider px-3 py-1 flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5 text-[#142380]" />
+                  <span>Global Navigation</span>
+                </div>
+                
+                <button
+                  onClick={() => setActiveTab('home')}
+                  className="w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2.5 text-[#454652] hover:bg-[#f0f3ff] hover:text-[#142380] transition-all cursor-pointer"
+                >
+                  <Shield className="w-4 h-4" />
+                  <span>Home</span>
+                </button>
+                
+                <button
+                  onClick={() => setActiveTab('dashboard')}
+                  className="w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2.5 text-[#454652] hover:bg-[#f0f3ff] hover:text-[#142380] transition-all cursor-pointer"
+                >
+                  <LayoutDashboard className="w-4 h-4" />
+                  <span>Dashboard</span>
+                </button>
+              </div>
+
               {/* Main Navigation Items (Matching User Screenshot) */}
               <div className="bg-white rounded-2xl border border-[#D9DDE7] p-2 space-y-1 shadow-2xs">
                 <div className="text-[10px] font-bold text-[#767683] uppercase tracking-wider px-3 py-1 flex items-center gap-1.5">
@@ -419,7 +450,7 @@ export const AESVisualizer: React.FC = () => {
                 </div>
 
                 <button
-                  onClick={() => { setCurrentStepIdx(0); setActiveTab('trace'); }}
+                  onClick={() => { setCurrentStepIdx(0); setViewTab('trace'); }}
                   className={`w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2.5 transition-all cursor-pointer ${
                     currentStepIdx === 0
                       ? 'bg-[#142380] text-white shadow-xs'
@@ -427,13 +458,13 @@ export const AESVisualizer: React.FC = () => {
                   }`}
                 >
                   <LayoutDashboard className="w-4 h-4" />
-                  <span>Dashboard</span>
+                  <span>Session Dashboard</span>
                 </button>
 
                 <button
-                  onClick={() => { setCurrentStepIdx(2); setActiveTab('trace'); }}
+                  onClick={() => { setCurrentStepIdx(2); setViewTab('trace'); }}
                   className={`w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2.5 transition-all cursor-pointer ${
-                    currentStepIdx >= 2 && activeTab === 'trace'
+                    currentStepIdx >= 2 && viewTab === 'trace'
                       ? 'bg-[#142380] text-white shadow-xs'
                       : 'text-[#454652] hover:bg-[#f0f3ff] hover:text-[#142380]'
                   }`}
@@ -443,9 +474,9 @@ export const AESVisualizer: React.FC = () => {
                 </button>
 
                 <button
-                  onClick={() => { setCurrentStepIdx(2); setActiveTab('keyExpansion'); }}
+                  onClick={() => { setCurrentStepIdx(2); setViewTab('keyExpansion'); }}
                   className={`w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2.5 transition-all cursor-pointer ${
-                    activeTab === 'keyExpansion'
+                    viewTab === 'keyExpansion'
                       ? 'bg-[#142380] text-white shadow-xs'
                       : 'text-[#454652] hover:bg-[#f0f3ff] hover:text-[#142380]'
                   }`}
@@ -459,7 +490,7 @@ export const AESVisualizer: React.FC = () => {
                     const mixIdx = trace.steps.findIndex(s => s.operation === 'mixColumns');
                     if (mixIdx >= 0) setCurrentStepIdx(mixIdx);
                     else setCurrentStepIdx(2);
-                    setActiveTab('trace');
+                    setViewTab('trace');
                   }}
                   className="w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2.5 text-[#454652] hover:bg-[#f0f3ff] hover:text-[#142380] transition-all cursor-pointer"
                 >
@@ -468,9 +499,9 @@ export const AESVisualizer: React.FC = () => {
                 </button>
 
                 <button
-                  onClick={() => { setCurrentStepIdx(trace.steps.length - 1); setActiveTab('finalCiphertext'); }}
+                  onClick={() => { setCurrentStepIdx(trace.steps.length - 1); setViewTab('finalCiphertext'); }}
                   className={`w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2.5 transition-all cursor-pointer ${
-                    activeTab === 'finalCiphertext'
+                    viewTab === 'finalCiphertext'
                       ? 'bg-[#142380] text-white shadow-xs'
                       : 'text-[#454652] hover:bg-[#f0f3ff] hover:text-[#142380]'
                   }`}
@@ -489,16 +520,16 @@ export const AESVisualizer: React.FC = () => {
                     Session Status
                   </span>
                   <span className={`flex items-center gap-1.5 font-bold px-2.5 py-1 rounded-full text-[11px] ${
-                    activeTab === 'finalCiphertext'
+                    viewTab === 'finalCiphertext'
                       ? 'text-[#005221] bg-[#e8f8ee]'
                       : 'text-[#142380] bg-[#e7eefe]'
                   }`}>
                     <span className={`w-2 h-2 rounded-full animate-pulse ${
-                      activeTab === 'finalCiphertext' ? 'bg-[#005221]' : 'bg-[#142380]'
+                      viewTab === 'finalCiphertext' ? 'bg-[#005221]' : 'bg-[#142380]'
                     }`}></span>
-                    {activeTab === 'finalCiphertext'
+                    {viewTab === 'finalCiphertext'
                       ? 'Completed'
-                      : activeTab === 'keyExpansion'
+                      : viewTab === 'keyExpansion'
                       ? 'Preparing Encryption'
                       : 'Ready'}
                   </span>
@@ -511,9 +542,9 @@ export const AESVisualizer: React.FC = () => {
                     Current Stage
                   </span>
                   <span className="font-bold text-[#142380]">
-                    {activeTab === 'finalCiphertext'
+                    {viewTab === 'finalCiphertext'
                       ? 'Final Ciphertext'
-                      : activeTab === 'keyExpansion'
+                      : viewTab === 'keyExpansion'
                       ? 'Key Expansion'
                       : currentStep.title}
                   </span>
@@ -526,9 +557,9 @@ export const AESVisualizer: React.FC = () => {
                     Current Round
                   </span>
                   <span className="font-bold text-[#151c27]">
-                    {activeTab === 'finalCiphertext'
+                    {viewTab === 'finalCiphertext'
                       ? 'Round 10 (Final)'
-                      : activeTab === 'keyExpansion'
+                      : viewTab === 'keyExpansion'
                       ? 'Preparation'
                       : `Round ${currentStep.round}`}
                   </span>
@@ -541,13 +572,13 @@ export const AESVisualizer: React.FC = () => {
                     Overall Progress
                   </span>
                   <span className={`font-bold px-2 py-0.5 rounded-md ${
-                    activeTab === 'finalCiphertext'
+                    viewTab === 'finalCiphertext'
                       ? 'text-[#005221] bg-[#e8f8ee]'
                       : 'text-[#142380] bg-[#e7eefe]'
                   }`}>
-                    {activeTab === 'finalCiphertext'
+                    {viewTab === 'finalCiphertext'
                       ? '100%'
-                      : activeTab === 'keyExpansion'
+                      : viewTab === 'keyExpansion'
                       ? '10%'
                       : `${Math.round(((currentStepIdx + 1) / trace.steps.length) * 100)}%`}
                   </span>
@@ -758,10 +789,10 @@ export const AESVisualizer: React.FC = () => {
                 { id: 9, label: 'Final Cipher', icon: ShieldCheck, isKeyExp: false, isFinalCipher: true, targetIdx: trace.steps.length - 1 }
               ].map((step) => {
                 const isCurrent = step.isFinalCipher
-                  ? activeTab === 'finalCiphertext'
+                  ? viewTab === 'finalCiphertext'
                   : step.isKeyExp
-                  ? activeTab === 'keyExpansion'
-                  : activeTab === 'trace' && (
+                  ? viewTab === 'keyExpansion'
+                  : viewTab === 'trace' && (
                       (step.id === 1 && currentStepIdx === 0) ||
                       (step.id === 2 && currentStepIdx === 1) ||
                       (step.id === 4 && currentStepIdx === 2) ||
@@ -771,13 +802,13 @@ export const AESVisualizer: React.FC = () => {
                       (step.id === 8 && trace.steps[currentStepIdx]?.operation === 'addRoundKey')
                     );
 
-                const isCompleted = activeTab === 'finalCiphertext'
+                const isCompleted = viewTab === 'finalCiphertext'
                   ? step.id < 9
                   : step.isKeyExp
-                  ? currentStepIdx >= 2 && activeTab === 'trace'
+                  ? currentStepIdx >= 2 && viewTab === 'trace'
                   : (
-                      (step.id === 1 && (currentStepIdx > 0 || activeTab === 'keyExpansion')) ||
-                      (step.id === 2 && (currentStepIdx > 1 || activeTab === 'keyExpansion')) ||
+                      (step.id === 1 && (currentStepIdx > 0 || viewTab === 'keyExpansion')) ||
+                      (step.id === 2 && (currentStepIdx > 1 || viewTab === 'keyExpansion')) ||
                       (step.id === 4 && currentStepIdx > 2) ||
                       (step.id < 9 && currentStepIdx === trace.steps.length - 1)
                     );
@@ -787,13 +818,13 @@ export const AESVisualizer: React.FC = () => {
                 return (
                   <div key={step.id} className="relative z-10 flex flex-col items-center group cursor-pointer" onClick={() => {
                     if (step.isKeyExp) {
-                      setActiveTab('keyExpansion');
+                      setViewTab('keyExpansion');
                     } else if (step.isFinalCipher) {
                       setCurrentStepIdx(step.targetIdx);
-                      setActiveTab('finalCiphertext');
+                      setViewTab('finalCiphertext');
                     } else {
                       setCurrentStepIdx(step.targetIdx);
-                      setActiveTab('trace');
+                      setViewTab('trace');
                     }
                   }}>
                     <div
@@ -1316,7 +1347,7 @@ export const AESVisualizer: React.FC = () => {
                     </button>
 
                     <button
-                      onClick={() => setActiveTab('keyExpansion')}
+                      onClick={() => setViewTab('keyExpansion')}
                       className="w-full sm:w-auto px-6 py-3 bg-[#142380] hover:bg-[#2f3c97] text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
                     >
                       <span>Continue to Key Expansion</span>
@@ -1427,9 +1458,9 @@ export const AESVisualizer: React.FC = () => {
               {/* Main Workspace Navigation Tabs */}
               <div className="flex border-b border-[#D9DDE7] space-x-6">
             <button
-              onClick={() => setActiveTab('trace')}
+              onClick={() => setViewTab('trace')}
               className={`pb-3 text-sm sm:text-base font-bold transition-all border-b-2 cursor-pointer ${
-                activeTab === 'trace'
+                viewTab === 'trace'
                   ? 'text-[#142380] border-[#142380]'
                   : 'text-[#454652] border-transparent hover:text-[#2f3c97]'
               }`}
@@ -1438,9 +1469,9 @@ export const AESVisualizer: React.FC = () => {
               Round-by-Round Visual Trace ({trace.steps.length} Steps)
             </button>
             <button
-              onClick={() => setActiveTab('keyExpansion')}
+              onClick={() => setViewTab('keyExpansion')}
               className={`pb-3 text-sm sm:text-base font-bold transition-all border-b-2 cursor-pointer ${
-                activeTab === 'keyExpansion'
+                viewTab === 'keyExpansion'
                   ? 'text-[#142380] border-[#142380]'
                   : 'text-[#454652] border-transparent hover:text-[#2f3c97]'
               }`}
@@ -1451,7 +1482,7 @@ export const AESVisualizer: React.FC = () => {
           </div>
 
           {/* TAB 1: ROUND-BY-ROUND TRACE */}
-          {activeTab === 'trace' && (
+          {viewTab === 'trace' && (
             <div className="space-y-6">
               
               {/* Playback Controls Toolbar */}
@@ -3647,7 +3678,7 @@ export const AESVisualizer: React.FC = () => {
                     </button>
                     {currentStepIdx === trace.steps.length - 1 ? (
                       <button
-                        onClick={() => setActiveTab('finalCiphertext')}
+                        onClick={() => setViewTab('finalCiphertext')}
                         className="px-4 py-2 bg-[#142380] hover:bg-[#2f3c97] text-white font-extrabold text-xs rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
                       >
                         <span>View Final Ciphertext</span>
@@ -3669,7 +3700,7 @@ export const AESVisualizer: React.FC = () => {
           )}
 
           {/* TAB 2: KEY EXPANSION SCHEDULE */}
-          {activeTab === 'keyExpansion' && (() => {
+          {viewTab === 'keyExpansion' && (() => {
             const parsedKeyBytes = parseInputBytes(keyInput, isHexMode);
             const keyMatrix: number[][] = [
               [parsedKeyBytes[0] ?? 0, parsedKeyBytes[4] ?? 0, parsedKeyBytes[8] ?? 0, parsedKeyBytes[12] ?? 0],
@@ -4027,7 +4058,7 @@ export const AESVisualizer: React.FC = () => {
                       <button
                         onClick={() => {
                           setCurrentStepIdx(2);
-                          setActiveTab('trace');
+                          setViewTab('trace');
                         }}
                         className="px-6 py-3.5 rounded-2xl bg-[#142380] hover:bg-[#2f3c97] text-white font-extrabold text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer shrink-0"
                       >
@@ -4044,7 +4075,7 @@ export const AESVisualizer: React.FC = () => {
       )}
 
       {/* TAB 3: FINAL CIPHERTEXT */}
-      {activeTab === 'finalCiphertext' && (() => {
+      {viewTab === 'finalCiphertext' && (() => {
         const finalStateBytes = trace.steps[trace.steps.length - 1]?.state.flat() || [];
         const finalCiphertextHex = bytesToHexFormatted(finalStateBytes);
         const plainTextHex = bytesToHexFormatted(parseInputBytes(plaintextInput, isHexMode));
@@ -4361,7 +4392,7 @@ SUMMARY:
               <button
                 onClick={() => {
                   setCurrentStepIdx(0);
-                  setActiveTab('trace');
+                  setViewTab('trace');
                   setIsPlaying(false);
                 }}
                 className="w-full sm:w-auto px-6 py-3.5 bg-white hover:bg-[#f0f3ff] text-[#142380] border border-[#142380] rounded-2xl font-extrabold text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
@@ -4375,7 +4406,7 @@ SUMMARY:
                   setPlaintextInput('NEW SECRET MSG 26');
                   setKeyInput('AES SECRET KEY!!');
                   setCurrentStepIdx(0);
-                  setActiveTab('trace');
+                  setViewTab('trace');
                 }}
                 className="w-full sm:w-auto px-8 py-3.5 bg-[#142380] hover:bg-[#2f3c97] text-white rounded-2xl font-extrabold text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
               >
@@ -4412,16 +4443,16 @@ SUMMARY:
               <div className="flex items-center gap-2 text-[#142380]">
                 <Lightbulb className="w-4 h-4 text-[#142380]" />
                 <h3 className="text-sm font-extrabold">
-                  {activeTab === 'finalCiphertext'
+                  {viewTab === 'finalCiphertext'
                     ? 'Final Ciphertext Guide'
-                    : activeTab === 'keyExpansion'
+                    : viewTab === 'keyExpansion'
                     ? 'Key Expansion Guide'
                     : 'Knowledge Base'}
                 </h3>
               </div>
 
               <div className="space-y-2">
-                {activeTab === 'finalCiphertext' ? (
+                {viewTab === 'finalCiphertext' ? (
                   <>
                     {/* Final Ciphertext KB Item 1 */}
                     <div className="bg-white rounded-xl border border-[#dce2f3] overflow-hidden">
@@ -4471,7 +4502,7 @@ SUMMARY:
                       )}
                     </div>
                   </>
-                ) : activeTab === 'keyExpansion' ? (
+                ) : viewTab === 'keyExpansion' ? (
                   <>
                     {/* Key Expansion KB Item 1 */}
                     <div className="bg-white rounded-xl border border-[#dce2f3] overflow-hidden">

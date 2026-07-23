@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { NavigationTab, SessionRecord } from './types';
+import React from 'react';
+import { Routes, Route, useNavigate } from 'react-router-dom';
+import { SessionRecord } from './types';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { HeroSection } from './components/HeroSection';
@@ -20,73 +21,175 @@ import { LoginModal } from './components/LoginModal';
 import { DashboardView } from './components/DashboardView';
 import { SessionHistoryView } from './components/SessionHistoryView';
 import { SessionDetailsView } from './components/SessionDetailsView';
+import { useAuthStore } from './store/useAuthStore';
+
+function HomePage({ navigate }: { navigate: (path: string) => void }) {
+  const setActiveTab = (tab: any) => {
+    switch (tab) {
+      case 'home':
+        navigate('/');
+        break;
+      case 'dashboard':
+        navigate('/dashboard');
+        break;
+      case 'basics':
+        navigate('/basics');
+        break;
+      case 'visualization':
+        navigate('/visualization');
+        break;
+      case 'documentation':
+        navigate('/documentation');
+        break;
+      case 'login':
+        navigate('/login');
+        break;
+      default:
+        navigate('/');
+    }
+  };
+
+  return (
+    <div className="space-y-0">
+      <HeroSection setActiveTab={setActiveTab} />
+      <WhyChooseSection setActiveTab={setActiveTab} />
+      <JourneyTimeline setActiveTab={setActiveTab} />
+      <StatsSection setActiveTab={setActiveTab} />
+      <CTASection setActiveTab={setActiveTab} />
+    </div>
+  );
+}
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<NavigationTab>('home');
-  const [isLoginOpen, setIsLoginOpen] = useState<boolean>(false);
-  const [selectedSession, setSelectedSession] = useState<SessionRecord | null>(null);
+  const navigate = useNavigate();
+  const [isLoginOpen, setIsLoginOpen] = React.useState(false);
+  const [selectedSession, setSelectedSession] = React.useState<SessionRecord | null>(null);
+  const { isLoggedIn, login, logout } = useAuthStore();
+
+  const setActiveTab = (tab: any) => {
+    switch (tab) {
+      case 'home':
+        navigate('/');
+        break;
+      case 'dashboard':
+        navigate('/dashboard');
+        break;
+      case 'history':
+        navigate('/history');
+        break;
+      case 'details':
+        navigate('/details');
+        break;
+      case 'basics':
+        navigate('/basics');
+        break;
+      case 'visualization':
+        navigate('/visualization');
+        break;
+      case 'documentation':
+        navigate('/documentation');
+        break;
+      case 'login':
+        navigate('/login');
+        break;
+      default:
+        navigate('/');
+    }
+  };
 
   const handleSelectSession = (session: SessionRecord) => {
     setSelectedSession(session);
-    setActiveTab('details');
+    navigate('/details');
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-[#f9f9ff] text-[#151c27] font-sans antialiased">
-      {/* Sticky Top Header (hidden for login, dashboard, history, details, and basics which have custom dashboard navigation shell) */}
-      {activeTab !== 'login' && activeTab !== 'dashboard' && activeTab !== 'history' && activeTab !== 'details' && activeTab !== 'basics' && (
-        <Header
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          onOpenLogin={() => setIsLoginOpen(true)}
+      {/* Sticky Top Header (hidden for login, dashboard, history, details, basics, visualization, and documentation which have custom navigation shells) */}
+      <Routes>
+        {/* Routes with header and footer */}
+        <Route
+          path="/"
+          element={
+            <>
+              <Header
+                activeTab="home"
+                setActiveTab={setActiveTab}
+                onOpenLogin={() => setIsLoginOpen(true)}
+                isLoggedIn={isLoggedIn}
+                onLogout={logout}
+              />
+              <main className="flex-1">
+                <HomePage navigate={navigate} />
+              </main>
+              <Footer setActiveTab={setActiveTab} onOpenLogin={() => setIsLoginOpen(true)} />
+            </>
+          }
         />
-      )}
 
-      {/* Main Page Content based on Active Tab */}
-      <main className="flex-1">
-        {activeTab === 'home' && (
-          <div className="space-y-0">
-            <HeroSection setActiveTab={setActiveTab} />
-            <WhyChooseSection setActiveTab={setActiveTab} />
-            <JourneyTimeline setActiveTab={setActiveTab} />
-            <StatsSection setActiveTab={setActiveTab} />
-            <CTASection setActiveTab={setActiveTab} />
-          </div>
-        )}
+        {/* Routes without header and footer */}
+        <Route
+          path="/login"
+          element={
+            <main className="flex-1">
+              <LoginPage setActiveTab={setActiveTab} onLoginSuccess={() => login({ email: 'student@university.edu' })} />
+            </main>
+          }
+        />
 
-        {activeTab === 'dashboard' && (
-          <DashboardView setActiveTab={setActiveTab} onSelectSession={handleSelectSession} />
-        )}
+        <Route
+          path="/dashboard"
+          element={
+            <main className="flex-1">
+              <DashboardView setActiveTab={setActiveTab} onSelectSession={handleSelectSession} />
+            </main>
+          }
+        />
 
-        {activeTab === 'history' && (
-          <SessionHistoryView setActiveTab={setActiveTab} onSelectSession={handleSelectSession} />
-        )}
+        <Route
+          path="/history"
+          element={
+            <main className="flex-1">
+              <SessionHistoryView setActiveTab={setActiveTab} onSelectSession={handleSelectSession} />
+            </main>
+          }
+        />
 
-        {activeTab === 'details' && (
-          <SessionDetailsView setActiveTab={setActiveTab} selectedSession={selectedSession} />
-        )}
+        <Route
+          path="/details"
+          element={
+            <main className="flex-1">
+              <SessionDetailsView setActiveTab={setActiveTab} selectedSession={selectedSession} />
+            </main>
+          }
+        />
 
-        {activeTab === 'basics' && (
-          <AESBasics setActiveTab={setActiveTab} />
-        )}
+        <Route
+          path="/basics"
+          element={
+            <main className="flex-1">
+              <AESBasics setActiveTab={setActiveTab} />
+            </main>
+          }
+        />
 
-        {activeTab === 'visualization' && (
-          <AESVisualizer />
-        )}
+        <Route
+          path="/visualization"
+          element={
+            <main className="flex-1">
+              <AESVisualizer setActiveTab={setActiveTab} />
+            </main>
+          }
+        />
 
-        {activeTab === 'documentation' && (
-          <DocumentationView />
-        )}
-
-        {activeTab === 'login' && (
-          <LoginPage setActiveTab={setActiveTab} />
-        )}
-      </main>
-
-      {/* Footer */}
-      {activeTab !== 'login' && activeTab !== 'dashboard' && activeTab !== 'history' && activeTab !== 'details' && activeTab !== 'basics' && (
-        <Footer setActiveTab={setActiveTab} onOpenLogin={() => setIsLoginOpen(true)} />
-      )}
+        <Route
+          path="/documentation"
+          element={
+            <main className="flex-1">
+              <DocumentationView setActiveTab={setActiveTab} />
+            </main>
+          }
+        />
+      </Routes>
 
       {/* Login Modal */}
       <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />

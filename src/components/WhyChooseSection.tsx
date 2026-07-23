@@ -35,7 +35,7 @@ export const WhyChooseSection: React.FC<WhyChooseSectionProps> = ({ setActiveTab
   ];
 
   return (
-    <section className="py-16 md:py-20 bg-[#F7F8FC]">
+    <section id="features" className="py-16 md:py-20 bg-[#F7F8FC]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Section Header */}

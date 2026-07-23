@@ -6,12 +6,22 @@ interface HeaderProps {
   activeTab: NavigationTab;
   setActiveTab: (tab: NavigationTab) => void;
   onOpenLogin: () => void;
+  isLoggedIn?: boolean;
+  onLogout?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenLogin }) => {
+export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenLogin, isLoggedIn = false, onLogout }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const navItems: { id: NavigationTab; label: string }[] = [
+  // Landing page nav items (scroll to sections)
+  const landingNavItems: { id: string; label: string }[] = [
+    { id: 'features', label: 'Features' },
+    { id: 'journey', label: 'Learning Journey' },
+    { id: 'stats', label: 'Stats' },
+  ];
+
+  // Authenticated nav items
+  const authNavItems: { id: NavigationTab; label: string }[] = [
     { id: 'home', label: 'Home' },
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'basics', label: 'AES Basics' },
@@ -23,6 +33,14 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenL
     setActiveTab(tab);
     setMobileMenuOpen(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleScrollToSection = (sectionId: string) => {
+    setMobileMenuOpen(false);
+    const element = document.getElementById(sectionId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth' });
+    }
   };
 
   return (
@@ -49,46 +67,71 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenL
 
         {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center gap-8">
-          {navItems.map((item) => {
-            const isActive = activeTab === item.id;
-            return (
+          {isLoggedIn ? (
+            authNavItems.map((item) => {
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => handleNav(item.id)}
+                  id={`nav-link-${item.id}`}
+                  className={`font-semibold text-base transition-all py-1 border-b-2 ${
+                    isActive
+                      ? 'text-[#142380] border-[#142380]'
+                      : 'text-[#454652] border-transparent hover:text-[#24307B]'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              );
+            })
+          ) : (
+            landingNavItems.map((item) => (
               <button
                 key={item.id}
-                onClick={() => handleNav(item.id)}
+                onClick={() => handleScrollToSection(item.id)}
                 id={`nav-link-${item.id}`}
-                className={`font-semibold text-base transition-all py-1 border-b-2 ${
-                  isActive
-                    ? 'text-[#142380] border-[#142380]'
-                    : 'text-[#454652] border-transparent hover:text-[#24307B]'
-                }`}
+                className="font-semibold text-base transition-all py-1 border-b-2 text-[#454652] border-transparent hover:text-[#24307B] hover:border-[#24307B]"
               >
                 {item.label}
               </button>
-            );
-          })}
+            ))
+          )}
         </nav>
 
         {/* Action Buttons */}
         <div className="hidden sm:flex items-center gap-3">
-          <button
-            onClick={() => handleNav('login')}
-            id="header-login-btn"
-            className={`px-4 py-2 font-semibold text-base transition-colors rounded-lg ${
-              activeTab === 'login'
-                ? 'text-[#142380] bg-[#e7eefe]'
-                : 'text-[#454652] hover:text-[#24307B] hover:bg-[#f0f3ff]'
-            }`}
-          >
-            Login
-          </button>
-          <button
-            onClick={() => handleNav('visualization')}
-            id="header-start-learning-btn"
-            className="bg-[#2f3c97] text-white px-5 py-2.5 rounded-xl font-semibold text-base shadow-md hover:bg-[#142380] hover:shadow-lg transition-all active:scale-95 flex items-center gap-2"
-          >
-            <span>Start Learning</span>
-            <ChevronRight className="w-4 h-4" />
-          </button>
+          {isLoggedIn ? (
+            <button
+              onClick={() => onLogout?.()}
+              id="header-logout-btn"
+              className="px-4 py-2 font-semibold text-base transition-colors rounded-lg text-[#454652] hover:text-[#24307B] hover:bg-[#f0f3ff]"
+            >
+              Logout
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={() => handleNav('login')}
+                id="header-login-btn"
+                className={`px-4 py-2 font-semibold text-base transition-colors rounded-lg ${
+                  activeTab === 'login'
+                    ? 'text-[#142380] bg-[#e7eefe]'
+                    : 'text-[#454652] hover:text-[#24307B] hover:bg-[#f0f3ff]'
+                }`}
+              >
+                Login
+              </button>
+              <button
+                onClick={() => handleNav('login')}
+                id="header-start-learning-btn"
+                className="bg-[#2f3c97] text-white px-5 py-2.5 rounded-xl font-semibold text-base shadow-md hover:bg-[#142380] hover:shadow-lg transition-all active:scale-95 flex items-center gap-2"
+              >
+                <span>Get Started</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </>
+          )}
         </div>
 
         {/* Mobile Hamburger Button */}
@@ -107,40 +150,64 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, onOpenL
       {/* Mobile Menu Drawer */}
       {mobileMenuOpen && (
         <div className="md:hidden bg-white border-b border-[#D9DDE7] px-4 pt-2 pb-6 space-y-3 shadow-lg">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => handleNav(item.id)}
-              className={`w-full text-left px-4 py-3 rounded-xl text-base font-semibold transition-colors flex items-center justify-between ${
-                activeTab === item.id
-                  ? 'bg-[#e7eefe] text-[#142380]'
-                  : 'text-[#454652] hover:bg-[#f0f3ff]'
-              }`}
-            >
-              <span>{item.label}</span>
-              {activeTab === item.id && <div className="w-2 h-2 rounded-full bg-[#142380]" />}
-            </button>
-          ))}
-          <div className="pt-2 border-t border-[#D9DDE7] flex flex-col gap-2">
-            <button
-              onClick={() => {
-                handleNav('login');
-              }}
-              className={`w-full text-center px-4 py-2.5 text-base font-semibold border rounded-xl ${
-                activeTab === 'login'
-                  ? 'bg-[#e7eefe] text-[#142380] border-[#142380]'
-                  : 'text-[#454652] border-[#D9DDE7] hover:bg-[#f0f3ff]'
-              }`}
-            >
-              Login
-            </button>
-            <button
-              onClick={() => handleNav('visualization')}
-              className="w-full text-center px-4 py-2.5 text-base font-semibold text-white bg-[#2f3c97] rounded-xl hover:bg-[#142380] shadow-sm"
-            >
-              Start Learning
-            </button>
-          </div>
+          {isLoggedIn ? (
+            <>
+              {authNavItems.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => handleNav(item.id)}
+                  className={`w-full text-left px-4 py-3 rounded-xl text-base font-semibold transition-colors flex items-center justify-between ${
+                    activeTab === item.id
+                      ? 'bg-[#e7eefe] text-[#142380]'
+                      : 'text-[#454652] hover:bg-[#f0f3ff]'
+                  }`}
+                >
+                  <span>{item.label}</span>
+                  {activeTab === item.id && <div className="w-2 h-2 rounded-full bg-[#142380]" />}
+                </button>
+              ))}
+              <div className="pt-2 border-t border-[#D9DDE7]">
+                <button
+                  onClick={() => onLogout?.()}
+                  className="w-full text-center px-4 py-2.5 text-base font-semibold border rounded-xl text-[#454652] border-[#D9DDE7] hover:bg-[#f0f3ff]"
+                >
+                  Logout
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              {landingNavItems.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => handleScrollToSection(item.id)}
+                  className="w-full text-left px-4 py-3 rounded-xl text-base font-semibold transition-colors text-[#454652] hover:bg-[#f0f3ff]"
+                >
+                  <span>{item.label}</span>
+                </button>
+              ))}
+              <div className="pt-2 border-t border-[#D9DDE7] flex flex-col gap-2">
+                <button
+                  onClick={() => {
+                    handleNav('login');
+                  }}
+                  className={`w-full text-center px-4 py-2.5 text-base font-semibold border rounded-xl ${
+                    activeTab === 'login'
+                      ? 'bg-[#e7eefe] text-[#142380] border-[#142380]'
+                      : 'text-[#454652] border-[#D9DDE7] hover:bg-[#f0f3ff]'
+                  }`}
+                >
+                  Login
+                </button>
+                <button
+                  onClick={() => handleNav('login')}
+                  className="w-full text-center px-4 py-2.5 text-base font-semibold text-white bg-[#2f3c97] rounded-xl hover:bg-[#142380] shadow-sm"
+                >
+                  Get Started
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
     </header>

@@ -35,7 +35,7 @@ export const StatsSection: React.FC<StatsSectionProps> = ({ setActiveTab }) => {
   ];
 
   return (
-    <section className="py-16 md:py-20 bg-[#F7F8FC]">
+    <section id="stats" className="py-16 md:py-20 bg-[#F7F8FC]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
           {stats.map((stat, idx) => {

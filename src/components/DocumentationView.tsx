@@ -1,8 +1,13 @@
 import React, { useState } from 'react';
+import { NavigationTab } from '../types';
 import { SBOX, INV_SBOX, RCON } from '../lib/aes';
-import { Search, FileText, CheckCircle, ExternalLink, Grid, Table } from 'lucide-react';
+import { Search, FileText, CheckCircle, ExternalLink, Grid, Table, ChevronLeft, LayoutDashboard } from 'lucide-react';
 
-export const DocumentationView: React.FC = () => {
+interface DocumentationViewProps {
+  setActiveTab: (tab: NavigationTab) => void;
+}
+
+export const DocumentationView: React.FC<DocumentationViewProps> = ({ setActiveTab }) => {
   const [selectedBox, setSelectedBox] = useState<'sbox' | 'invSbox'>('sbox');
   const [hoveredByte, setHoveredByte] = useState<number | null>(0x32);
   const [searchQuery, setSearchQuery] = useState('');
@@ -10,10 +15,35 @@ export const DocumentationView: React.FC = () => {
   const activeBox = selectedBox === 'sbox' ? SBOX : INV_SBOX;
 
   return (
-    <div className="py-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto space-y-10">
-      
-      {/* Title Banner */}
-      <div className="bg-white p-6 sm:p-8 rounded-3xl border border-[#D9DDE7] shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+    <div className="min-h-screen bg-[#f9f9ff]">
+      {/* Top Navigation Bar */}
+      <div className="sticky top-0 z-40 bg-white border-b border-[#D9DDE7] shadow-xs px-4 sm:px-6 lg:px-8 py-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-[#454652] hover:bg-[#f0f3ff] transition-all"
+            >
+              <ChevronLeft className="w-5 h-5" />
+              <span className="font-semibold text-sm">Back to Dashboard</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#2f3c97] text-white font-semibold text-sm hover:bg-[#142380] transition-all"
+            >
+              <LayoutDashboard className="w-4 h-4" />
+              <span>Dashboard</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="py-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto space-y-10">
+        {/* Title Banner */}
+        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-[#D9DDE7] shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
           <div className="inline-flex items-center gap-2 bg-[#e7eefe] text-[#142380] px-3 py-1 rounded-full text-xs font-bold mb-2">
             <FileText className="w-3.5 h-3.5 text-[#2f3c97]" />
@@ -165,6 +195,7 @@ export const DocumentationView: React.FC = () => {
             </div>
           ))}
         </div>
+      </div>
       </div>
 
     </div>

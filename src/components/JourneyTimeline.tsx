@@ -90,7 +90,7 @@ export const JourneyTimeline: React.FC<JourneyTimelineProps> = ({ setActiveTab, 
   const currentStepInfo = selectedStepModal !== null ? steps[selectedStepModal - 1] : null;
 
   return (
-    <section className="py-16 md:py-20 bg-white border-y border-[#D9DDE7]">
+    <section id="journey" className="py-16 md:py-20 bg-white border-y border-[#D9DDE7]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Section Header */}

@@ -28,9 +28,10 @@ import {
 interface LoginPageProps {
   setActiveTab: (tab: NavigationTab) => void;
   initialMode?: 'login' | 'register' | 'verify' | 'forgot' | 'reset';
+  onLoginSuccess?: () => void;
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode = 'register' }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode = 'register', onLoginSuccess }) => {
   const [mode, setMode] = useState<'login' | 'register' | 'verify' | 'forgot' | 'reset'>(initialMode);
 
   // Common Form States
@@ -87,6 +88,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
   const handleVerifySuccess = () => {
     setVerificationStatus('success');
     setTimeout(() => {
+      onLoginSuccess?.();
       setActiveTab('dashboard');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }, 2000);
@@ -145,6 +147,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
           setTimeLeft(60);
           setTimerActive(true);
         } else {
+          onLoginSuccess?.();
           setActiveTab('dashboard');
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }
