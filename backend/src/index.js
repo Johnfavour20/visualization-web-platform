@@ -1,32 +1,73 @@
-// Load environment variables
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const db = require('./config/database');
-const usersRouter = require('./routes/users');
-const sessionsRouter = require('./routes/sessions');
+const express = require("express");
+const cors = require("cors");
+require("dotenv").config();
+
+const userRoutes = require("./routes/users");
+const sessionRoutes = require("./routes/sessions");
 
 const app = express();
-const PORT = process.env.PORT || 5000;
 
+// ================================
 // Middleware
-app.use(cors());
+// ================================
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5173",
+      "https://visualization-web-platform.vercel.app",
+    ],
+    credentials: true,
+  })
+);
+
 app.use(express.json());
 
+// ================================
 // Routes
-app.use('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Server is running' });
-});
-app.use('/api/users', usersRouter);
-app.use('/api/sessions', sessionsRouter);
+// ================================
+app.use("/api/users", userRoutes);
+app.use("/api/sessions", sessionRoutes);
 
-// Error handling middleware
+// ================================
+// Root Route
+// ================================
+app.get("/", (req, res) => {
+  res.json({
+    success: true,
+    message: "AES Visualizer Backend API is running 🚀",
+    version: "1.0.0",
+  });
+});
+
+// ================================
+// Health Check
+// ================================
+app.get("/api/health", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "API is healthy",
+    environment: process.env.NODE_ENV || "development",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// ================================
+// Error Handler
+// ================================
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
+
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || "Internal Server Error",
+  });
 });
 
-// Start server
+// ================================
+// Start Server
+// ================================
+const PORT = process.env.PORT || 5000;
+
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
