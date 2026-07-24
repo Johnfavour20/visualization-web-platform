@@ -1,32 +1,30 @@
-import axios from 'axios';
+import axios from "axios";
 
 const api = axios.create({
-  baseURL: (import.meta as any).env.VITE_API_URL || 'http://localhost:5001/api',
+  baseURL:
+    import.meta.env.VITE_API_URL ||
+    "http://localhost:5001/api",
+
   timeout: 10000,
+
   headers: {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   },
 });
 
-// Add a request interceptor
+// Request Interceptor
 api.interceptors.request.use(
   (config) => {
-    // You can add auth tokens here if needed
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
-// Add a response interceptor
+// Response Interceptor
 api.interceptors.response.use(
-  (response) => {
-    return response;
-  },
+  (response) => response,
   (error) => {
-    // Handle errors here
-    console.error('API Error:', error);
+    console.error("API Error:", error);
     return Promise.reject(error);
   }
 );
