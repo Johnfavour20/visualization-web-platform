@@ -128,13 +128,19 @@ export default function App() {
 
         {/* Routes without header and footer */}
         <Route
-          path="/login"
-          element={
-            <main className="flex-1">
-              <LoginPage setActiveTab={setActiveTab} onLoginSuccess={() => login({ email: 'student@university.edu' })} />
-            </main>
-          }
-        />
+  path="/login"
+  element={
+    <main className="flex-1">
+      <LoginPage
+        setActiveTab={setActiveTab}
+        onLoginSuccess={(user) => {
+          login(user);
+          navigate("/dashboard");
+        }}
+      />
+    </main>
+  }
+/>
 
         <Route
           path="/dashboard"
