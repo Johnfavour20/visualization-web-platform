@@ -1,10 +1,17 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+interface User {
+  id: number;
+  email: string;
+  name?: string;
+  created_at: string;
+}
+
 interface AuthState {
   isLoggedIn: boolean;
-  user: { email: string; name?: string } | null;
-  login: (user: { email: string; name?: string }) => void;
+  user: User | null;
+  login: (user: User) => void;
   logout: () => void;
 }
 

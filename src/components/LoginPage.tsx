@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NavigationTab } from '../types';
+import api from '../api';
+import { useAuthStore } from '../store/useAuthStore';
 import {
   ShieldCheck,
   Zap,
@@ -126,7 +128,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
     '1B', '9F', '7C', '0D',
   ];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const { login } = useAuthStore();
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (mode === 'register' && !termsAccepted) {
       alert('Please agree to the Terms of Service and Privacy Policy.');
@@ -138,21 +142,40 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
     }
 
     setStatus('loading');
-    setTimeout(() => {
-      setStatus('success');
-      setTimeout(() => {
-        if (mode === 'register') {
+    try {
+      if (mode === 'register') {
+        // Call register API
+        const response = await api.post('/users', { email, name: fullName });
+        console.log('Register response:', response.data);
+        setStatus('success');
+        setTimeout(() => {
           setMode('verify');
           setStatus('idle');
           setTimeLeft(60);
           setTimerActive(true);
-        } else {
+        }, 1000);
+      } else {
+        // Call login API (for now, check if user exists)
+        const response = await api.get(`/users?email=${encodeURIComponent(email)}`);
+        if (response.data.length > 0) {
+          const user = response.data[0];
+          login(user);
           onLoginSuccess?.();
-          setActiveTab('dashboard');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
+          setStatus('success');
+          setTimeout(() => {
+            setActiveTab('dashboard');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }, 1000);
+        } else {
+          alert('User not found. Please register first.');
+          setStatus('idle');
         }
-      }, 1000);
-    }, 1200);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('An error occurred. Please try again.');
+      setStatus('idle');
+    }
   };
 
   return (
