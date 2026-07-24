@@ -3,10 +3,7 @@ import { NavigationTab } from '../types';
 import api from '../api';
 import { useAuthStore } from '../store/useAuthStore';
 import {
-  ShieldCheck,
-  Zap,
-  Network,
-  KeyRound,
+  Shield,
   Mail,
   Lock,
   Eye,
@@ -17,7 +14,6 @@ import {
   Loader2,
   User,
   RotateCcw,
-  Shield,
   Check,
   Circle,
   AlertCircle,
@@ -42,6 +38,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [status, setStatus] = useState<'idle' | 'loading' | 'success'>('idle');
+  const [error, setError] = useState('');
 
   // Register Specific States
   const [fullName, setFullName] = useState('');
@@ -65,6 +62,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
   const [resetSubmitted, setResetSubmitted] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
 
+  const { login, logout } = useAuthStore();
+
+  // Auto Login Check
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      setActiveTab('dashboard');
+    }
+  }, [setActiveTab]);
+
   // Countdown timer effect for verification
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -77,6 +84,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
     }
     return () => clearInterval(interval);
   }, [mode, timerActive, timeLeft]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    logout();
+  };
 
   const handleResendEmail = () => {
     setTimeLeft(60);
@@ -120,7 +132,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
   else if (strengthPercentage > 50 && strengthPercentage <= 75) strengthColor = 'bg-[#2f3c97]';
   else if (strengthPercentage > 75) strengthColor = 'bg-[#005221]';
 
-  // Matrix cell values matching screenshot
+  // Matrix cell values
   const matrixCells = [
     'AE', 'S1', '34', 'B9',
     '2F', 'C6', '88', '4A',
@@ -128,52 +140,66 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
     '1B', '9F', '7C', '0D',
   ];
 
-  const { login } = useAuthStore();
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+
     if (mode === 'register' && !termsAccepted) {
-      alert('Please agree to the Terms of Service and Privacy Policy.');
+      setError('Please agree to terms');
       return;
     }
     if (mode === 'register' && password !== confirmPassword) {
-      alert('Passwords do not match.');
+      setError('Passwords do not match');
       return;
     }
 
     setStatus('loading');
     try {
       if (mode === 'register') {
-        // Call register API
-        const response = await api.post('/users', { email, name: fullName });
-        console.log('Register response:', response.data);
-        setStatus('success');
-        setTimeout(() => {
+        const response = await api.post('/users', {
+          name: fullName,
+          email,
+          password,
+        });
+
+        // Email verification toggle option:
+        const supportsEmailVerification = false;
+
+        if (supportsEmailVerification) {
           setMode('verify');
           setStatus('idle');
           setTimeLeft(60);
           setTimerActive(true);
-        }, 1000);
-      } else {
-        // Call login API (for now, check if user exists)
-        const response = await api.get(`/users?email=${encodeURIComponent(email)}`);
-        if (response.data.length > 0) {
-          const user = response.data[0];
-          login(user);
-          onLoginSuccess?.();
+        } else {
+          login(response.data.user);
+          localStorage.setItem('token', response.data.token);
           setStatus('success');
           setTimeout(() => {
             setActiveTab('dashboard');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
           }, 1000);
-        } else {
-          alert('User not found. Please register first.');
-          setStatus('idle');
         }
+      } else {
+        const response = await api.post('/users/login', {
+          email,
+          password,
+        });
+
+        const { user, token } = response.data;
+        login(user);
+        localStorage.setItem('token', token);
+        onLoginSuccess?.();
+        setStatus('success');
+        setTimeout(() => {
+          setActiveTab('dashboard');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }, 1000);
       }
-    } catch (error) {
-      console.error('Error:', error);
-      alert('An error occurred. Please try again.');
+    } catch (err: any) {
+      console.error(err);
+      setError(
+        err.response?.data?.message ||
+        'Something went wrong. Please try again.'
+      );
       setStatus('idle');
     }
   };
@@ -182,7 +208,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
     <div className="min-h-screen flex flex-col md:flex-row bg-[#F7F8FC]">
       {/* Left Panel: Branding & AES Illustration */}
       <section className="w-full md:w-[45%] lg:w-[45%] bg-[#142380] p-8 md:p-12 lg:p-16 flex flex-col justify-center relative overflow-hidden text-white">
-        {/* Background Decorative Accents */}
         <div className="absolute -top-24 -left-24 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-48 -right-24 w-96 h-96 bg-[#2f3c97]/40 rounded-full blur-3xl pointer-events-none" />
 
@@ -201,7 +226,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
               </button>
             </div>
 
-            {/* Security Protocol Badge for Forgot Mode */}
             {mode === 'forgot' && (
               <div className="inline-flex items-center gap-2 px-3.5 py-2 bg-white/10 rounded-xl border border-white/20 backdrop-blur-md mb-4">
                 <div className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center">
@@ -235,7 +259,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
             </p>
           </div>
 
-          {/* Security Protocol Badge for Reset Mode */}
           {mode === 'reset' && (
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-white/10 rounded-xl border border-white/20 backdrop-blur-md w-fit">
               <RotateCcw className="w-4 h-4 text-[#ff9a5b]" />
@@ -243,7 +266,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
             </div>
           )}
 
-          {/* AES 4x4 State Matrix Visual Card (for Login mode) */}
           {mode === 'login' && (
             <div className="p-6 bg-[#2f3c97]/30 rounded-2xl border border-white/10 backdrop-blur-xs space-y-4">
               <div className="text-center text-xs font-semibold text-[#a4aeff]">
@@ -269,7 +291,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
             </div>
           )}
 
-          {/* Feature Highlights */}
           <div className="space-y-3 pt-2">
             <div className="flex items-center gap-3 bg-white/5 p-3 rounded-xl border border-white/10 hover:bg-white/10 transition-colors">
               <div className="w-8 h-8 rounded-full bg-[#005221] flex items-center justify-center shrink-0">
@@ -306,7 +327,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
           {/* MODE: VERIFY EMAIL */}
           {mode === 'verify' && (
             <div className="bg-white p-8 sm:p-10 rounded-3xl shadow-lg border border-[#D9DDE7] space-y-6">
-              {/* Icon Header */}
               <div className="flex flex-col items-center text-center space-y-4">
                 <div className="w-20 h-20 bg-[#e7eefe] rounded-full flex items-center justify-center relative shadow-sm">
                   <Mail className="w-10 h-10 text-[#142380]" />
@@ -324,7 +344,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                 </div>
               </div>
 
-              {/* Email Display Box */}
               <div className="bg-[#f0f3ff] rounded-xl p-3.5 flex items-center justify-between border border-[#c6c5d4]/40">
                 <div className="flex items-center gap-2 min-w-0 pr-2">
                   <AtSign className="w-4 h-4 text-[#767683] shrink-0" />
@@ -337,6 +356,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                   onClick={() => {
                     setMode('register');
                     setVerificationStatus('none');
+                    setError('');
                   }}
                   className="text-xs text-[#142380] hover:underline font-bold shrink-0 cursor-pointer"
                 >
@@ -344,7 +364,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                 </button>
               </div>
 
-              {/* Status Box */}
               {verificationStatus === 'success' && (
                 <div className="rounded-xl p-4 bg-[#005221]/10 border border-[#005221]/20 text-[#005221] flex items-start gap-3">
                   <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" />
@@ -369,7 +388,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                 </div>
               )}
 
-              {/* Verification Actions */}
               <div className="space-y-4 pt-1">
                 <button
                   type="button"
@@ -403,13 +421,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                 </div>
               </div>
 
-              {/* Footer Help */}
               <div className="pt-4 border-t border-[#D9DDE7] text-center">
                 <p className="text-xs text-[#767683]">
                   Didn't receive an email? Check your spam folder or{' '}
                   <button
                     type="button"
-                    onClick={() => alert('Support team contacted. We will assist you shortly!')}
+                    onClick={() => setError('Support team contacted. We will assist you shortly!')}
                     className="text-[#142380] font-bold hover:underline cursor-pointer"
                   >
                     Contact Support
@@ -432,6 +449,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                     : 'Start your AES learning journey today.'}
                 </p>
               </div>
+
+              {/* Error Message Display */}
+              {error && (
+                <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-red-600 text-sm">
+                  {error}
+                </div>
+              )}
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 {/* Full Name Input (Register Only) */}
@@ -487,6 +511,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                           setMode('forgot');
                           setForgotSubmitted(false);
                           setStatus('idle');
+                          setError('');
                         }}
                         className="text-xs font-semibold text-[#142380] hover:underline cursor-pointer"
                       >
@@ -514,7 +539,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                     </button>
                   </div>
 
-                  {/* Password Strength Indicator (Register Mode) */}
                   {mode === 'register' && (
                     <div className="space-y-2 pt-1">
                       <div className="h-1.5 w-full bg-[#dce2f3] rounded-full overflow-hidden">
@@ -591,22 +615,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                       className="mt-0.5 w-4 h-4 text-[#142380] border-[#D9DDE7] rounded focus:ring-[#142380] cursor-pointer"
                     />
                     <label htmlFor="terms" className="text-xs font-medium text-[#454652] cursor-pointer select-none leading-relaxed">
-                      I agree to the{' '}
-                      <button
-                        type="button"
-                        onClick={() => alert('Terms of Service: Authorized educational usage only.')}
-                        className="text-[#142380] font-bold hover:underline"
-                      >
-                        Terms of Service
-                      </button>{' '}
-                      and{' '}
-                      <button
-                        type="button"
-                        onClick={() => alert('Privacy Policy: No personal data is stored or shared.')}
-                        className="text-[#142380] font-bold hover:underline"
-                      >
-                        Privacy Policy
-                      </button>.
+                      I agree to the Terms of Service and Privacy Policy.
                     </label>
                   </div>
                 )}
@@ -630,7 +639,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                   {status === 'success' && (
                     <>
                       <CheckCircle2 className="w-4 h-4" />
-                      <span>{mode === 'login' ? 'Authenticated! Opening Lab...' : 'Account Created! Verify Email...'}</span>
+                      <span>{mode === 'login' ? 'Authenticated! Opening Lab...' : 'Account Created! Redirecting...'}</span>
                     </>
                   )}
                   {status === 'idle' && (
@@ -653,6 +662,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                         onClick={() => {
                           setMode('register');
                           setStatus('idle');
+                          setError('');
                         }}
                         className="text-[#142380] font-bold hover:underline cursor-pointer"
                       >
@@ -667,6 +677,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                         onClick={() => {
                           setMode('login');
                           setStatus('idle');
+                          setError('');
                         }}
                         className="text-[#142380] font-bold hover:underline cursor-pointer"
                       >
@@ -682,6 +693,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
           {/* Forgot Password Mode */}
           {mode === 'forgot' && (
             <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl shadow-slate-200/50 border border-[#D9DDE7] space-y-6">
+              {error && (
+                <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-red-600 text-sm">
+                  {error}
+                </div>
+              )}
               {!forgotSubmitted ? (
                 <>
                   <div className="space-y-1.5">
@@ -694,6 +710,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
+                      setError('');
                       if (!email) return;
                       setForgotLoading(true);
                       setTimeout(() => {
@@ -747,6 +764,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                           onClick={() => {
                             setMode('login');
                             setStatus('idle');
+                            setError('');
                           }}
                           className="text-[#142380] font-bold hover:underline ml-1 cursor-pointer"
                         >
@@ -774,6 +792,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                       onClick={() => {
                         setMode('reset');
                         setResetSubmitted(false);
+                        setError('');
                       }}
                       className="w-full h-11 bg-[#142380] text-white font-bold text-sm rounded-xl hover:bg-[#2f3c97] transition-all cursor-pointer flex items-center justify-center gap-2"
                     >
@@ -795,6 +814,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                         onClick={() => {
                           setMode('login');
                           setStatus('idle');
+                          setError('');
                         }}
                         className="w-full h-11 bg-[#F7F8FC] border border-[#D9DDE7] text-[#151c27] font-bold text-sm rounded-xl hover:bg-[#e7eefe] transition-all cursor-pointer"
                       >
@@ -810,6 +830,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
           {/* Reset Password Mode */}
           {mode === 'reset' && (
             <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl shadow-slate-200/50 border border-[#D9DDE7] space-y-6">
+              {error && (
+                <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-red-600 text-sm">
+                  {error}
+                </div>
+              )}
               {!resetSubmitted ? (
                 <>
                   <div className="flex flex-col items-center text-center space-y-3">
@@ -827,8 +852,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
+                      setError('');
                       if (newPassword !== confirmNewPassword) {
-                        alert('Passwords do not match!');
+                        setError('Passwords do not match');
                         return;
                       }
                       setResetLoading(true);
@@ -877,7 +903,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                           {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </button>
                       </div>
-                      {/* Strength Bar */}
                       <div className="h-1.5 w-full bg-[#e2e8f8] rounded-full overflow-hidden mt-1.5">
                         <div
                           className={`h-full transition-all duration-300 ${
@@ -927,7 +952,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                       )}
                     </div>
 
-                    {/* Security Requirements Checklist */}
                     <div className="p-3.5 bg-[#f0f3ff] rounded-xl border border-[#D9DDE7]/60 space-y-2">
                       <h4 className="text-[11px] font-bold text-[#767683] uppercase tracking-wider">
                         Security Requirements
@@ -956,7 +980,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                       </div>
                     </div>
 
-                    {/* Submit Button */}
                     <button
                       type="submit"
                       disabled={resetLoading}
@@ -981,6 +1004,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                         onClick={() => {
                           setMode('login');
                           setStatus('idle');
+                          setError('');
                         }}
                         className="text-xs sm:text-sm text-[#142380] font-bold hover:underline cursor-pointer"
                       >
@@ -990,7 +1014,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                   </form>
                 </>
               ) : (
-                /* Success View after Reset Password */
                 <div className="flex flex-col items-center text-center py-4 space-y-4">
                   <div className="w-16 h-16 bg-[#6bff8f]/30 border border-[#005221]/20 rounded-full flex items-center justify-center text-[#005221]">
                     <CheckCircle2 className="w-10 h-10 text-[#005221]" />
@@ -1011,6 +1034,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                         setNewPassword('');
                         setConfirmNewPassword('');
                         setStatus('idle');
+                        setError('');
                       }}
                       className="w-full h-12 bg-[#142380] hover:bg-[#2f3c97] text-white font-bold text-sm rounded-xl shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2"
                     >
@@ -1030,7 +1054,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                   <div className="w-full p-3 bg-[#f0f3ff] rounded-xl border border-[#142380]/10 flex gap-2.5 items-start text-left">
                     <Info className="w-4 h-4 text-[#142380] shrink-0 mt-0.5" />
                     <p className="text-xs text-[#454652] leading-relaxed">
-                      <span className="font-bold text-[#151c27]">Security Tip:</span> Keep your password private and avoid sharing it with others. Use a unique password to better protect your account.
+                      <span className="font-bold text-[#151c27]">Security Tip:</span> Keep your password private and avoid sharing it with others.
                     </p>
                   </div>
                 </div>
@@ -1047,7 +1071,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
                   Need immediate help? Contact our{' '}
                   <button
                     type="button"
-                    onClick={() => alert('Technical support team notified. We will assist you shortly!')}
+                    onClick={() => setError('Technical support team notified. We will assist you shortly!')}
                     className="text-[#96490d] font-bold hover:underline cursor-pointer"
                   >
                     technical support
@@ -1069,5 +1093,3 @@ export const LoginPage: React.FC<LoginPageProps> = ({ setActiveTab, initialMode 
     </div>
   );
 };
-
-
