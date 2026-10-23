@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   DisplayFormat,
   AESTraceResult,
@@ -69,6 +70,7 @@ interface AESVisualizerProps {
 }
 
 export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) => {
+  const location = useLocation();
   // Input States
   const [plaintextInput, setPlaintextInput] = useState<string>('HELLO WORLD 2026');
   const [keyInput, setKeyInput] = useState<string>('AES SECRET KEY!!');
@@ -94,7 +96,7 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
 
   // View Controls
   const [displayFormat, setDisplayFormat] = useState<DisplayFormat>('hex');
-  const [viewTab, setViewTab] = useState<'trace' | 'keyExpansion' | 'finalCiphertext'>('trace');
+  const [viewTab, setViewTab] = useState<'trace' | 'stateMatrix' | 'keyExpansion' | 'finalCiphertext'>('trace');
   const [copiedText, setCopiedText] = useState<string | null>(null);
   const [hoveredCell, setHoveredCell] = useState<{ r: number; c: number } | null>(null);
 
@@ -107,6 +109,11 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
   const [showFullSBoxModal, setShowFullSBoxModal] = useState<boolean>(false);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [playSpeedMs, setPlaySpeedMs] = useState<number>(1200);
+  const [initializationPhase, setInitializationPhase] = useState<
+    'idle' | 'validatingPlaintext' | 'validatingKey' | 'mapping' | 'expanding' | 'complete'
+  >('idle');
+  const [mappedByteCount, setMappedByteCount] = useState(0);
+  const [generatedRoundKeyCount, setGeneratedRoundKeyCount] = useState(0);
 
   // Reset active byte indices on step change
   useEffect(() => {
@@ -145,6 +152,219 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
     return runAESTrace(ptBytes, keyBytes);
   }, [plaintextInput, keyInput, isHexMode]);
 
+  const selectTraceStep = (stepIdx: number) => {
+    const boundedIdx = Math.max(0, Math.min(trace.steps.length - 1, stepIdx));
+    setCurrentStepIdx(boundedIdx);
+    setViewTab(
+      boundedIdx === trace.steps.length - 1 ? 'finalCiphertext' : 'trace'
+    );
+  };
+
+  const initializationInputBytes = useMemo(
+    () =>
+      Array.from(
+        { length: 16 },
+        (_, index) => trace.steps[0].state[index % 4][Math.floor(index / 4)]
+      ),
+    [trace.steps]
+  );
+  const initializationProgress = (() => {
+    switch (initializationPhase) {
+      case 'validatingPlaintext':
+        return 5;
+      case 'validatingKey':
+        return 10;
+      case 'mapping':
+        return 10 + Math.round((mappedByteCount / 16) * 50);
+      case 'expanding':
+        return 60 + Math.round((generatedRoundKeyCount / trace.roundKeys.length) * 40);
+      case 'complete':
+        return 100;
+      default:
+        return 0;
+    }
+  })();
+  const initializationRemainingSeconds = Math.ceil(
+    initializationPhase === 'validatingPlaintext'
+      ? 0.7 + 16 * 0.12 + trace.roundKeys.length * 0.14
+      : initializationPhase === 'validatingKey'
+        ? 0.35 + 16 * 0.12 + trace.roundKeys.length * 0.14
+        : initializationPhase === 'mapping'
+          ? (16 - mappedByteCount) * 0.12 + trace.roundKeys.length * 0.14
+          : initializationPhase === 'expanding'
+            ? (trace.roundKeys.length - generatedRoundKeyCount) * 0.14
+            : 0
+  );
+  const initializationStageIndex = {
+    idle: 0,
+    validatingPlaintext: 0,
+    validatingKey: 1,
+    mapping: 2,
+    expanding: 3,
+    complete: 4,
+  }[initializationPhase];
+  const initializationTasks = [
+    {
+      title: 'Validate Plaintext',
+      detail: 'Parsing input into a 16-byte block',
+      progress: initializationStageIndex > 0 ? 'Validated' : 'Checking input...',
+    },
+    {
+      title: 'Validate AES Key',
+      detail: `Preparing AES-${selectedAlgo} key`,
+      progress: initializationStageIndex > 1 ? 'Validated' : 'Checking key...',
+    },
+    {
+      title: 'Generate State Matrix',
+      detail: `Mapping 16 bytes to a 4×4 grid (${mappedByteCount}/16)`,
+      progress: `${mappedByteCount}/16 bytes`,
+    },
+    {
+      title: 'Generate Round Keys',
+      detail: 'Key Expansion Schedule',
+      progress: `${generatedRoundKeyCount}/${trace.roundKeys.length} round keys`,
+    },
+  ];
+  const initializationOperation = {
+    idle: 'Ready to initialize',
+    validatingPlaintext: 'Parsing plaintext',
+    validatingKey: 'Validating AES key',
+    mapping: 'Mapping state matrix',
+    expanding: 'Generating round keys',
+    complete: 'Initialization complete',
+  }[initializationPhase];
+  const logEntries = [
+    { text: 'System ready.', status: 'complete' },
+    {
+      text: 'Parsing plaintext into a 16-byte block.',
+      status:
+        initializationPhase === 'validatingPlaintext'
+          ? 'active'
+          : initializationPhase === 'idle'
+            ? 'pending'
+            : 'complete',
+    },
+    {
+      text: `AES-${selectedAlgo} configuration selected.`,
+      status: initializationStageIndex > 0 ? 'complete' : 'pending',
+    },
+    {
+      text: 'Validating the encryption key.',
+      status:
+        initializationPhase === 'validatingKey'
+          ? 'active'
+          : initializationStageIndex > 1
+            ? 'complete'
+            : 'pending',
+    },
+    {
+      text: `Mapping state matrix: ${mappedByteCount}/16 bytes.`,
+      status:
+        initializationPhase === 'mapping'
+          ? 'active'
+          : initializationStageIndex > 2
+            ? 'complete'
+            : 'pending',
+    },
+    {
+      text: `Generating round keys: ${generatedRoundKeyCount}/${trace.roundKeys.length}.`,
+      status:
+        initializationPhase === 'expanding'
+          ? 'active'
+          : initializationPhase === 'complete'
+            ? 'complete'
+            : 'pending',
+    },
+  ];
+
+  const startInitialization = () => {
+    setIsPlaying(false);
+    setViewTab('trace');
+    setCurrentStepIdx(1);
+    setMappedByteCount(0);
+    setGeneratedRoundKeyCount(0);
+    setInitializationPhase('validatingPlaintext');
+  };
+
+  useEffect(() => {
+    if (initializationPhase !== 'validatingPlaintext' && initializationPhase !== 'validatingKey') {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setInitializationPhase((phase) =>
+        phase === 'validatingPlaintext' ? 'validatingKey' : 'mapping'
+      );
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [initializationPhase]);
+
+  useEffect(() => {
+    if (initializationPhase !== 'mapping') return;
+    if (mappedByteCount >= 16) {
+      setInitializationPhase('expanding');
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setMappedByteCount((count) => Math.min(count + 1, 16));
+    }, 120);
+    return () => clearInterval(timer);
+  }, [initializationPhase, mappedByteCount]);
+
+  useEffect(() => {
+    if (initializationPhase !== 'expanding') return;
+    if (generatedRoundKeyCount >= trace.roundKeys.length) {
+      setInitializationPhase('complete');
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setGeneratedRoundKeyCount((count) => Math.min(count + 1, trace.roundKeys.length));
+    }, 140);
+    return () => clearInterval(timer);
+  }, [initializationPhase, generatedRoundKeyCount, trace.roundKeys.length]);
+
+  useEffect(() => {
+    setInitializationPhase('idle');
+    setMappedByteCount(0);
+    setGeneratedRoundKeyCount(0);
+  }, [plaintextInput, keyInput, isHexMode, selectedAlgo]);
+
+  const showKeyExpansion = () => {
+    setCurrentStepIdx((currentIdx) => Math.max(currentIdx, 2));
+    setViewTab('keyExpansion');
+  };
+
+  const requestedOperation = (location.state as { operation?: string } | null)?.operation;
+
+  useEffect(() => {
+    if (!requestedOperation) return;
+
+    const targetIdx =
+      requestedOperation === 'stateMatrix'
+        ? 0
+        : requestedOperation === 'finalCiphertext'
+          ? trace.steps.length - 1
+          : trace.steps.findIndex(
+              (step) =>
+                step.operation === requestedOperation &&
+                (requestedOperation !== 'addRoundKey' || step.round > 0)
+            );
+
+    if (targetIdx >= 0) {
+      setIsPlaying(false);
+      setCurrentStepIdx(targetIdx);
+      setViewTab(
+        requestedOperation === 'stateMatrix'
+          ? 'stateMatrix'
+          : requestedOperation === 'finalCiphertext'
+            ? 'finalCiphertext'
+            : 'trace'
+      );
+    }
+  }, [requestedOperation, trace.steps]);
+
   // Compute progress percentage
   const sessionProgressPct = useMemo(() => {
     if (trace.steps.length <= 1) return 0;
@@ -157,63 +377,64 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
     if (isPlaying) {
       if (viewTab === 'keyExpansion') {
         timer = setInterval(() => {
-          setKeyExpRound((prev) => {
-            if (prev >= 10) {
-              setIsPlaying(false);
-              return 10;
-            }
-            return prev + 1;
-          });
+          if (keyExpRound >= 10) {
+            setIsPlaying(false);
+            return;
+          }
+          setKeyExpRound(keyExpRound + 1);
         }, playSpeedMs);
       } else {
-        const curOp = trace.steps[currentStepIdx]?.operation;
         timer = setInterval(() => {
-          if (curOp === 'addRoundKey') {
-            setActiveAddKeyByteIdx((prev) => {
-              if (prev >= 15) {
-                setIsPlaying(false);
-                return 15;
-              }
-              return prev + 1;
-            });
-          } else if (curOp === 'subBytes') {
-            setActiveSubByteIdx((prev) => {
-              if (prev >= 15) {
-                setIsPlaying(false);
-                return 15;
-              }
-              return prev + 1;
-            });
-          } else if (curOp === 'shiftRows') {
-            setActiveShiftRowIdx((prev) => {
-              if (prev >= 3) {
-                setIsPlaying(false);
-                return 3;
-              }
-              return prev + 1;
-            });
-          } else if (curOp === 'mixColumns') {
-            setActiveMixColIdx((prev) => {
-              if (prev >= 3) {
-                setIsPlaying(false);
-                return 3;
-              }
-              return prev + 1;
-            });
-          } else {
-            setCurrentStepIdx((prev) => {
-              if (prev >= trace.steps.length - 1) {
-                setIsPlaying(false);
-                return prev;
-              }
-              return prev + 1;
-            });
+          const step = trace.steps[currentStepIdx];
+          if (!step) {
+            setIsPlaying(false);
+            return;
+          }
+
+          const advanceStage = () => {
+            if (currentStepIdx >= trace.steps.length - 1) {
+              setIsPlaying(false);
+            } else {
+              selectTraceStep(currentStepIdx + 1);
+            }
+          };
+
+          switch (step.operation) {
+            case 'addRoundKey':
+              if (activeAddKeyByteIdx < 15) setActiveAddKeyByteIdx(activeAddKeyByteIdx + 1);
+              else advanceStage();
+              break;
+            case 'subBytes':
+              if (activeSubByteIdx < 15) setActiveSubByteIdx(activeSubByteIdx + 1);
+              else advanceStage();
+              break;
+            case 'shiftRows':
+              if (activeShiftRowIdx < 3) setActiveShiftRowIdx(activeShiftRowIdx + 1);
+              else advanceStage();
+              break;
+            case 'mixColumns':
+              if (activeMixColIdx < 3) setActiveMixColIdx(activeMixColIdx + 1);
+              else advanceStage();
+              break;
+            default:
+              advanceStage();
           }
         }, playSpeedMs);
       }
     }
     return () => clearInterval(timer);
-  }, [isPlaying, viewTab, playSpeedMs, trace.steps, currentStepIdx]);
+  }, [
+    isPlaying,
+    viewTab,
+    playSpeedMs,
+    trace.steps,
+    currentStepIdx,
+    keyExpRound,
+    activeAddKeyByteIdx,
+    activeSubByteIdx,
+    activeShiftRowIdx,
+    activeMixColIdx,
+  ]);
 
   const currentStep: StateMatrixStep = trace.steps[currentStepIdx] || trace.steps[0];
 
@@ -286,15 +507,27 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
     return map;
   }, [trace.steps]);
 
-  // Stepper current active index calculation
-  const getStepperActiveIndex = () => {
-    if (currentStepIdx === 0) return 1; // Input
-    if (currentStepIdx === 1) return 2; // Initialize
-    if (currentStepIdx === 2) return 3; // Matrix
-    if (currentStepIdx < trace.steps.length - 1) return 4; // Rounds
-    return 5; // Cipher
-  };
-  const activeStepNum = getStepperActiveIndex();
+  const activeJourneyStage = (() => {
+    if (viewTab === 'finalCiphertext') return 9;
+    if (viewTab === 'keyExpansion') return 3;
+    if (viewTab === 'stateMatrix') return 4;
+    if (currentStepIdx === 0) return 1;
+    if (currentStepIdx === 1) return 2;
+
+    const currentStep = trace.steps[currentStepIdx];
+    switch (currentStep?.operation) {
+      case 'subBytes':
+        return 5;
+      case 'shiftRows':
+        return 6;
+      case 'mixColumns':
+        return 7;
+      case 'addRoundKey':
+        return currentStep.round === 0 ? 4 : 8;
+      default:
+        return 4;
+    }
+  })();
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F7F8FC] text-[#151c27]">
@@ -462,9 +695,9 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
                 </button>
 
                 <button
-                  onClick={() => { setCurrentStepIdx(2); setViewTab('trace'); }}
+                  onClick={() => { setCurrentStepIdx(0); setViewTab('stateMatrix'); }}
                   className={`w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2.5 transition-all cursor-pointer ${
-                    currentStepIdx >= 2 && viewTab === 'trace'
+                    viewTab === 'stateMatrix'
                       ? 'bg-[#142380] text-white shadow-xs'
                       : 'text-[#454652] hover:bg-[#f0f3ff] hover:text-[#142380]'
                   }`}
@@ -474,7 +707,7 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
                 </button>
 
                 <button
-                  onClick={() => { setCurrentStepIdx(2); setViewTab('keyExpansion'); }}
+                  onClick={showKeyExpansion}
                   className={`w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2.5 transition-all cursor-pointer ${
                     viewTab === 'keyExpansion'
                       ? 'bg-[#142380] text-white shadow-xs'
@@ -781,47 +1014,30 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
                 { id: 1, label: 'Input', icon: CheckCircle2, isKeyExp: false, targetIdx: 0 },
                 { id: 2, label: 'Initialize', icon: CheckCircle2, isKeyExp: false, targetIdx: 1 },
                 { id: 3, label: 'Key Expansion', icon: Key, isKeyExp: true, targetIdx: 1 },
-                { id: 4, label: 'State Matrix', icon: Grid, isKeyExp: false, targetIdx: 2 },
+                { id: 4, label: 'State Matrix', icon: Grid, isKeyExp: false, targetIdx: 0 },
                 { id: 5, label: 'SubBytes', icon: Layers, isKeyExp: false, targetIdx: trace.steps.findIndex(s => s.operation === 'subBytes') >= 0 ? trace.steps.findIndex(s => s.operation === 'subBytes') : 3 },
                 { id: 6, label: 'ShiftRows', icon: BarChart2, isKeyExp: false, targetIdx: trace.steps.findIndex(s => s.operation === 'shiftRows') >= 0 ? trace.steps.findIndex(s => s.operation === 'shiftRows') : 4 },
                 { id: 7, label: 'MixColumns', icon: Sparkles, isKeyExp: false, targetIdx: trace.steps.findIndex(s => s.operation === 'mixColumns') >= 0 ? trace.steps.findIndex(s => s.operation === 'mixColumns') : 5 },
-                { id: 8, label: 'AddRoundKey', icon: Key, isKeyExp: false, targetIdx: trace.steps.findIndex(s => s.operation === 'addRoundKey') >= 0 ? trace.steps.findIndex(s => s.operation === 'addRoundKey') : 6 },
+                { id: 8, label: 'AddRoundKey', icon: Key, isKeyExp: false, targetIdx: trace.steps.findIndex(s => s.operation === 'addRoundKey' && s.round > 0) >= 0 ? trace.steps.findIndex(s => s.operation === 'addRoundKey' && s.round > 0) : 6 },
                 { id: 9, label: 'Final Cipher', icon: ShieldCheck, isKeyExp: false, isFinalCipher: true, targetIdx: trace.steps.length - 1 }
               ].map((step) => {
-                const isCurrent = step.isFinalCipher
-                  ? viewTab === 'finalCiphertext'
-                  : step.isKeyExp
-                  ? viewTab === 'keyExpansion'
-                  : viewTab === 'trace' && (
-                      (step.id === 1 && currentStepIdx === 0) ||
-                      (step.id === 2 && currentStepIdx === 1) ||
-                      (step.id === 4 && currentStepIdx === 2) ||
-                      (step.id === 5 && trace.steps[currentStepIdx]?.operation === 'subBytes') ||
-                      (step.id === 6 && trace.steps[currentStepIdx]?.operation === 'shiftRows') ||
-                      (step.id === 7 && trace.steps[currentStepIdx]?.operation === 'mixColumns') ||
-                      (step.id === 8 && trace.steps[currentStepIdx]?.operation === 'addRoundKey')
-                    );
-
-                const isCompleted = viewTab === 'finalCiphertext'
-                  ? step.id < 9
-                  : step.isKeyExp
-                  ? currentStepIdx >= 2 && viewTab === 'trace'
-                  : (
-                      (step.id === 1 && (currentStepIdx > 0 || viewTab === 'keyExpansion')) ||
-                      (step.id === 2 && (currentStepIdx > 1 || viewTab === 'keyExpansion')) ||
-                      (step.id === 4 && currentStepIdx > 2) ||
-                      (step.id < 9 && currentStepIdx === trace.steps.length - 1)
-                    );
+                const isCurrent = step.id === activeJourneyStage;
+                const isCompleted = step.id < activeJourneyStage;
 
                 const StepIcon = step.icon;
 
                 return (
                   <div key={step.id} className="relative z-10 flex flex-col items-center group cursor-pointer" onClick={() => {
                     if (step.isKeyExp) {
-                      setViewTab('keyExpansion');
+                      showKeyExpansion();
+                    } else if (step.id === 2) {
+                      startInitialization();
                     } else if (step.isFinalCipher) {
                       setCurrentStepIdx(step.targetIdx);
                       setViewTab('finalCiphertext');
+                    } else if (step.id === 4) {
+                      setCurrentStepIdx(step.targetIdx);
+                      setViewTab('stateMatrix');
                     } else {
                       setCurrentStepIdx(step.targetIdx);
                       setViewTab('trace');
@@ -856,7 +1072,54 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
           </div>
 
           {/* STEP 1: INPUT SCREEN */}
-          {currentStepIdx === 0 && (
+          {viewTab === 'stateMatrix' && (
+            <div className="max-w-4xl mx-auto space-y-6">
+              <section className="bg-white rounded-3xl border border-[#D9DDE7] shadow-xs p-6 sm:p-8 space-y-6">
+                <div className="text-center space-y-2">
+                  <div className="mx-auto w-12 h-12 rounded-2xl bg-[#e7eefe] text-[#142380] flex items-center justify-center">
+                    <Grid className="w-6 h-6" />
+                  </div>
+                  <h1 className="text-2xl font-extrabold text-[#142380]">State Matrix</h1>
+                  <p className="text-sm text-[#454652] max-w-2xl mx-auto">
+                    The plaintext bytes are arranged column by column in AES's 4×4 state. AES applies the original key with an initial AddRoundKey before Round 1 begins.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-4 gap-2 sm:gap-3 max-w-md mx-auto">
+                  {trace.steps[0].state.flatMap((row, rowIdx) =>
+                    row.map((byte, colIdx) => (
+                      <div
+                        key={`${rowIdx}-${colIdx}`}
+                        className="aspect-square rounded-xl border border-[#D9DDE7] bg-[#F7F8FC] flex flex-col items-center justify-center gap-1"
+                      >
+                        <span className="text-[10px] font-bold text-[#767683]">
+                          Row {rowIdx + 1}, Col {colIdx + 1}
+                        </span>
+                        <span className="font-mono text-lg sm:text-xl font-extrabold text-[#142380]">
+                          {byte.toString(16).padStart(2, '0').toUpperCase()}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className="flex justify-center">
+                  <button
+                    onClick={() => {
+                      setCurrentStepIdx(0);
+                      setViewTab('stateMatrix');
+                    }}
+                    className="px-6 py-3 bg-[#142380] hover:bg-[#2f3c97] text-white font-extrabold text-sm rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
+                  >
+                    <span>Continue to Round 1: SubBytes</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </section>
+            </div>
+          )}
+
+          {currentStepIdx === 0 && viewTab !== 'stateMatrix' && (
             <div className="space-y-6">
               {/* Today's Learning Objective Banner */}
               <div className="bg-white border-l-4 border-[#142380] border border-[#D9DDE7] rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -1008,6 +1271,7 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
                         setPlaintextInput('');
                         setKeyInput('');
                         setCurrentStepIdx(0);
+                        setInitializationPhase('idle');
                       }}
                       className="px-4 py-2.5 bg-[#F7F8FC] border border-[#D9DDE7] text-[#454652] font-bold text-xs rounded-xl hover:bg-[#dce2f3] hover:text-[#151c27] transition-all cursor-pointer"
                     >
@@ -1029,9 +1293,7 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
                   </div>
 
                   <button
-                    onClick={() => {
-                      setCurrentStepIdx(1);
-                    }}
+                    onClick={startInitialization}
                     className="w-full sm:w-auto px-8 py-3.5 bg-[#142380] hover:bg-[#2f3c97] text-white font-extrabold text-sm rounded-2xl shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2.5 hover:scale-[1.01] active:scale-[0.99]"
                     id="start-visualization-btn"
                   >
@@ -1164,15 +1426,21 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
                   <div className="space-y-2.5 border-t border-[#D9DDE7] pt-3 text-xs">
                     <div className="flex justify-between items-center">
                       <span className="text-[#454652] font-semibold">Current Stage</span>
-                      <span className="font-bold text-[#142380]">Initialization</span>
+                      <span className="font-bold text-[#142380]">
+                        {initializationPhase === 'complete' ? 'Complete' : 'Initialization'}
+                      </span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-[#454652] font-semibold">Active Operation</span>
-                      <span className="font-bold text-[#96490d]">State Mapping</span>
+                      <span className="font-bold text-[#96490d]">{initializationOperation}</span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-[#454652] font-semibold">Est. Time</span>
-                      <span className="font-bold text-[#151c27]">~0:08s</span>
+                      <span className="font-bold text-[#151c27]">
+                        {initializationPhase === 'complete'
+                          ? 'Done'
+                          : `~0:${initializationRemainingSeconds.toString().padStart(2, '0')}s`}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1183,34 +1451,24 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
                     INITIALIZATION LOG
                   </h3>
                   <div className="bg-[#151c27] rounded-xl p-3.5 font-mono text-[11px] leading-relaxed h-52 overflow-y-auto space-y-1.5 shadow-inner">
-                    <p className="text-[#6bff8f] flex gap-2">
-                      <span className="opacity-40">[1]</span>
-                      <span>[OK] System: Ready.</span>
-                    </p>
-                    <p className="text-[#6bff8f] flex gap-2">
-                      <span className="opacity-40">[2]</span>
-                      <span>[OK] Parsing input string...</span>
-                    </p>
-                    <p className="text-[#6bff8f] flex gap-2">
-                      <span className="opacity-40">[3]</span>
-                      <span>[OK] Validating plaintext (128-bit)...</span>
-                    </p>
-                    <p className="text-[#dfe0ff] flex gap-2">
-                      <span className="opacity-40">[4]</span>
-                      <span>[INFO] AES-{selectedAlgo} configuration selected.</span>
-                    </p>
-                    <p className="text-[#ffb68b] animate-pulse flex gap-2">
-                      <span className="opacity-40">[5]</span>
-                      <span>[BUSY] Creating state matrix...</span>
-                    </p>
-                    <p className="text-[#767683] flex gap-2">
-                      <span className="opacity-40">[6]</span>
-                      <span>[WAIT] Allocating round key memory...</span>
-                    </p>
-                    <p className="text-[#6bff8f]/80 flex gap-2">
-                      <span className="opacity-40">[7]</span>
-                      <span>[10:12:18] Applying Rijndael S-box transforms...</span>
-                    </p>
+                    {logEntries.map((entry, index) => (
+                      <p
+                        key={entry.text}
+                        className={`flex gap-2 ${
+                          entry.status === 'complete'
+                            ? 'text-[#6bff8f]'
+                            : entry.status === 'active'
+                              ? 'text-[#ffb68b] animate-pulse'
+                              : 'text-[#767683]'
+                        }`}
+                      >
+                        <span className="opacity-40">[{index + 1}]</span>
+                        <span>
+                          [{entry.status === 'complete' ? 'OK' : entry.status === 'active' ? 'RUN' : 'WAIT'}]{' '}
+                          {entry.text}
+                        </span>
+                      </p>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -1235,12 +1493,19 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
                     <div className="space-y-1.5">
                       <div className="flex justify-between items-center text-xs">
                         <span className="font-extrabold text-[#142380] animate-pulse">
-                          Preparing encryption environment...
+                          {initializationPhase === 'complete'
+                            ? 'Encryption environment ready'
+                            : initializationOperation}
                         </span>
-                        <span className="font-semibold text-[#454652]">85% Complete</span>
+                        <span className="font-semibold text-[#454652]">
+                          {initializationProgress}% Complete
+                        </span>
                       </div>
                       <div className="w-full h-3.5 bg-[#f0f3ff] rounded-full overflow-hidden border border-[#D9DDE7] relative">
-                        <div className="bg-[#142380] h-full rounded-full w-[85%] transition-all duration-500 relative">
+                        <div
+                          className="bg-[#142380] h-full rounded-full transition-all duration-300 relative"
+                          style={{ width: `${initializationProgress}%` }}
+                        >
                           <div className="absolute inset-0 bg-white/30 animate-pulse" />
                         </div>
                       </div>
@@ -1251,46 +1516,37 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-grow">
                     {/* Task List Card */}
                     <div className="flex flex-col gap-3 p-4 bg-[#F7F8FC] border border-[#D9DDE7] rounded-2xl">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <CheckCircle2 className="w-5 h-5 text-[#005221]" />
-                          <div>
-                            <p className="text-xs font-extrabold text-[#142380]">Validate Plaintext</p>
-                            <p className="text-[11px] text-[#454652]">Parsing input into byte array</p>
+                      {initializationTasks.map((task, index) => {
+                        const isComplete = initializationStageIndex > index;
+                        const isActive = initializationStageIndex === index && initializationPhase !== 'complete';
+                        return (
+                          <div
+                            key={task.title}
+                            className={`flex items-center justify-between rounded-xl transition-colors ${
+                              isActive ? 'bg-white p-2.5 border border-[#142380] shadow-2xs' : 'p-1'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5">
+                              {isComplete ? (
+                                <CheckCircle2 className="w-5 h-5 text-[#005221]" />
+                              ) : isActive ? (
+                                <RotateCcw className="w-5 h-5 text-[#142380] animate-spin" />
+                              ) : (
+                                <Circle className="w-5 h-5 text-[#767683]" />
+                              )}
+                              <div>
+                                <p className={`text-xs font-extrabold ${isComplete ? 'text-[#005221]' : isActive ? 'text-[#142380]' : 'text-[#767683]'}`}>
+                                  {task.title}
+                                </p>
+                                <p className="text-[11px] text-[#454652]">{task.detail}</p>
+                              </div>
+                            </div>
+                            <span className={`text-[10px] font-bold ${isActive ? 'text-[#96490d] bg-[#ffdbc9]' : 'text-[#454652]'} px-2 py-0.5 rounded`}>
+                              {isComplete ? 'Done' : task.progress}
+                            </span>
                           </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <CheckCircle2 className="w-5 h-5 text-[#005221]" />
-                          <div>
-                            <p className="text-xs font-extrabold text-[#142380]">Validate AES Key</p>
-                            <p className="text-[11px] text-[#454652]">Key length and entropy check</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between bg-white p-2.5 rounded-xl border border-[#142380] shadow-2xs">
-                        <div className="flex items-center gap-2.5">
-                          <RotateCcw className="w-5 h-5 text-[#142380] animate-spin" />
-                          <div>
-                            <p className="text-xs font-extrabold text-[#142380]">Generate State Matrix</p>
-                            <p className="text-[11px] text-[#454652]">Mapping 16 bytes to 4x4 grid</p>
-                          </div>
-                        </div>
-                        <span className="text-[10px] font-bold text-[#96490d] bg-[#ffdbc9] px-2 py-0.5 rounded">⏳ 6s</span>
-                      </div>
-
-                      <div className="flex items-center justify-between opacity-60 p-1">
-                        <div className="flex items-center gap-2.5">
-                          <Circle className="w-5 h-5 text-[#767683]" />
-                          <div>
-                            <p className="text-xs font-extrabold text-[#767683]">Generate Round Keys</p>
-                            <p className="text-[11px] text-[#767683]">Key Expansion Schedule</p>
-                          </div>
-                        </div>
-                      </div>
+                        );
+                      })}
                     </div>
 
                     {/* Visual Preview Diagram Card */}
@@ -1301,8 +1557,8 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
                             INPUT STREAM
                           </span>
                           <div className="flex gap-1 font-mono text-xs">
-                            {trace.steps[0]?.state.flat().slice(0, 4).map((b, i) => (
-                              <div key={i} className={`px-2 py-0.5 rounded font-bold ${i === 3 ? 'bg-[#142380] text-white shadow-md' : 'bg-white border border-[#D9DDE7] text-[#142380]'}`}>
+                            {initializationInputBytes.slice(0, 4).map((b, i) => (
+                              <div key={i} className={`px-2 py-0.5 rounded font-bold ${i < mappedByteCount ? 'bg-[#142380] text-white shadow-md' : 'bg-white border border-[#D9DDE7] text-[#142380]'}`}>
                                 {b.toString(16).padStart(2, '0').toUpperCase()}
                               </div>
                             ))}
@@ -1315,22 +1571,29 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
                         </div>
 
                         <div className="grid grid-cols-4 gap-1.5 p-2.5 bg-[#142380] rounded-xl border-2 border-[#142380] shadow-md">
-                          {trace.steps[1]?.state.flat().map((b, idx) => (
+                          {trace.steps[0]?.state.flatMap((row, rowIndex) =>
+                            row.map((b, colIndex) => {
+                              const byteIndex = colIndex * 4 + rowIndex;
+                              return (
                             <div
-                              key={idx}
+                              key={`${rowIndex}-${colIndex}`}
                               className={`w-8 h-8 rounded-md flex items-center justify-center text-xs font-extrabold ${
-                                idx < 4
+                                byteIndex < mappedByteCount
                                   ? 'bg-white text-[#142380] shadow-2xs'
                                   : 'bg-white/10 border border-white/20'
                               }`}
                             >
-                              {idx < 4 ? b.toString(16).padStart(2, '0').toUpperCase() : ''}
+                              {byteIndex < mappedByteCount ? b.toString(16).padStart(2, '0').toUpperCase() : ''}
                             </div>
-                          ))}
+                              );
+                            })
+                          )}
                         </div>
 
                         <p className="text-[10px] font-extrabold text-[#142380] uppercase tracking-widest">
-                          MAPPING STATE MATRIX
+                          {initializationPhase === 'complete'
+                            ? 'STATE MATRIX READY'
+                            : `MAPPING STATE MATRIX · ${mappedByteCount}/16`}
                         </p>
                       </div>
                     </div>
@@ -1338,17 +1601,18 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
 
                   {/* Footer Actions */}
                   <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-4 border-t border-[#D9DDE7]">
-                    <button
-                      disabled
-                      className="w-full sm:w-auto px-5 py-2.5 bg-[#F7F8FC] border border-[#D9DDE7] text-[#454652] font-bold text-xs rounded-xl flex items-center justify-center gap-2 opacity-70 cursor-not-allowed"
-                    >
-                      <RotateCcw className="w-4 h-4 animate-spin text-[#142380]" />
-                      <span>Initializing... Please Wait</span>
-                    </button>
+                    <span className="text-xs font-semibold text-[#454652]">
+                      {initializationPhase === 'complete'
+                        ? `${trace.roundKeys.length} round keys generated`
+                        : initializationPhase === 'idle'
+                          ? 'Start initialization to prepare the AES state'
+                          : `Initialization in progress · ${initializationRemainingSeconds}s remaining`}
+                    </span>
 
                     <button
-                      onClick={() => setViewTab('keyExpansion')}
-                      className="w-full sm:w-auto px-6 py-3 bg-[#142380] hover:bg-[#2f3c97] text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                      onClick={showKeyExpansion}
+                      disabled={initializationPhase !== 'complete'}
+                      className="w-full sm:w-auto px-6 py-3 bg-[#142380] hover:bg-[#2f3c97] text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <span>Continue to Key Expansion</span>
                       <ArrowRight className="w-4 h-4" />
@@ -1469,7 +1733,7 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
               Round-by-Round Visual Trace ({trace.steps.length} Steps)
             </button>
             <button
-              onClick={() => setViewTab('keyExpansion')}
+              onClick={showKeyExpansion}
               className={`pb-3 text-sm sm:text-base font-bold transition-all border-b-2 cursor-pointer ${
                 viewTab === 'keyExpansion'
                   ? 'text-[#142380] border-[#142380]'
@@ -1494,7 +1758,7 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
                     <button
                       onClick={() => {
                         setIsPlaying(false);
-                        setCurrentStepIdx(0);
+                        selectTraceStep(0);
                       }}
                       className="p-2.5 rounded-xl border border-[#D9DDE7] text-[#454652] hover:bg-[#f0f3ff] hover:text-[#142380] transition-colors cursor-pointer"
                       title="Reset to Start"
@@ -1504,7 +1768,7 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
                     <button
                       onClick={() => {
                         setIsPlaying(false);
-                        setCurrentStepIdx((prev) => Math.max(0, prev - 1));
+                        selectTraceStep(currentStepIdx - 1);
                       }}
                       disabled={currentStepIdx === 0}
                       className="p-2.5 rounded-xl border border-[#D9DDE7] text-[#454652] hover:bg-[#f0f3ff] disabled:opacity-40 transition-colors cursor-pointer"
@@ -1532,7 +1796,7 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
                     <button
                       onClick={() => {
                         setIsPlaying(false);
-                        setCurrentStepIdx((prev) => Math.min(trace.steps.length - 1, prev + 1));
+                        selectTraceStep(currentStepIdx + 1);
                       }}
                       disabled={currentStepIdx === trace.steps.length - 1}
                       className="p-2.5 rounded-xl border border-[#D9DDE7] text-[#454652] hover:bg-[#f0f3ff] disabled:opacity-40 transition-colors cursor-pointer"
@@ -1591,7 +1855,7 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
                           key={idx}
                           onClick={() => {
                             setIsPlaying(false);
-                            setCurrentStepIdx(idx);
+                            selectTraceStep(idx);
                           }}
                           className={`h-3 rounded-full flex-1 min-w-[12px] transition-all cursor-pointer ${
                             isActive
@@ -1617,7 +1881,7 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
                           key={rNum}
                           onClick={() => {
                             setIsPlaying(false);
-                            setCurrentStepIdx(firstStepInRound);
+                            selectTraceStep(firstStepInRound);
                           }}
                           className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                             isCurrentRound
@@ -2042,7 +2306,7 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
                           if (nextIdx !== -1) {
                             setCurrentStepIdx(nextIdx);
                           } else if (currentStepIdx < trace.steps.length - 1) {
-                            setCurrentStepIdx(currentStepIdx + 1);
+                            selectTraceStep(currentStepIdx + 1);
                           }
                         }}
                         className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-[#142380] hover:bg-[#2f3c97] text-white font-extrabold text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer shrink-0"
@@ -2381,7 +2645,7 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
                             if (nextIdx >= 0) {
                               setCurrentStepIdx(nextIdx);
                             } else if (currentStepIdx < trace.steps.length - 1) {
-                              setCurrentStepIdx(currentStepIdx + 1);
+                              selectTraceStep(currentStepIdx + 1);
                             }
                           }}
                           className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-[#142380] hover:bg-[#2f3c97] text-white font-extrabold text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer shrink-0"
@@ -2410,9 +2674,6 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
                       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
-                            <span className="bg-[#ffdbc9] text-[#96490d] text-xs font-extrabold px-3 py-1 rounded-full uppercase tracking-wider">
-                              Step {currentStep.round === 0 ? '1' : '8'}: Key Addition
-                            </span>
                             <h2 className="text-sm font-extrabold text-[#454652] tracking-wider uppercase">
                               ADDROUNDKEY TRANSFORMATION
                             </h2>
@@ -2708,7 +2969,7 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
                               setCurrentStepIdx(nextIdx);
                               setActiveAddKeyByteIdx(0);
                             } else if (currentStepIdx < trace.steps.length - 1) {
-                              setCurrentStepIdx(currentStepIdx + 1);
+                              selectTraceStep(currentStepIdx + 1);
                               setActiveAddKeyByteIdx(0);
                             }
                           }}
@@ -3042,7 +3303,7 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
                           if (nextIdx !== -1) {
                             setCurrentStepIdx(nextIdx);
                           } else if (currentStepIdx < trace.steps.length - 1) {
-                            setCurrentStepIdx(currentStepIdx + 1);
+                            selectTraceStep(currentStepIdx + 1);
                           }
                         }}
                         className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-[#142380] hover:bg-[#2f3c97] text-white font-extrabold text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer shrink-0"
@@ -3384,7 +3645,7 @@ export const AESVisualizer: React.FC<AESVisualizerProps> = ({ setActiveTab }) =>
                       <button
                         onClick={() => {
                           if (currentStepIdx < trace.steps.length - 1) {
-                            setCurrentStepIdx(currentStepIdx + 1);
+                            selectTraceStep(currentStepIdx + 1);
                           }
                         }}
                         disabled={currentStepIdx === trace.steps.length - 1}

@@ -168,8 +168,11 @@ export const JourneyTimeline: React.FC<JourneyTimelineProps> = ({ setActiveTab, 
                 <button
                   onClick={() => {
                     setSelectedStepModal(null);
-                    if (onSelectStep) onSelectStep(currentStepInfo.op);
-                    setActiveTab('visualization');
+                    if (onSelectStep) {
+                      onSelectStep(currentStepInfo.op);
+                    } else {
+                      setActiveTab('visualization');
+                    }
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                   }}
                   className="px-5 py-2 bg-[#2f3c97] text-white font-semibold text-sm rounded-xl hover:bg-[#142380] shadow-sm flex items-center gap-1.5"

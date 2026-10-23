@@ -23,7 +23,13 @@ import { SessionHistoryView } from './components/SessionHistoryView';
 import { SessionDetailsView } from './components/SessionDetailsView';
 import { useAuthStore } from './store/useAuthStore';
 
-function HomePage({ navigate }: { navigate: (path: string) => void }) {
+function HomePage({
+  navigate,
+  onSelectStep,
+}: {
+  navigate: (path: string) => void;
+  onSelectStep: (operation: string) => void;
+}) {
   const setActiveTab = (tab: any) => {
     switch (tab) {
       case 'home':
@@ -53,7 +59,7 @@ function HomePage({ navigate }: { navigate: (path: string) => void }) {
     <div className="space-y-0">
       <HeroSection setActiveTab={setActiveTab} />
       <WhyChooseSection setActiveTab={setActiveTab} />
-      <JourneyTimeline setActiveTab={setActiveTab} />
+      <JourneyTimeline setActiveTab={setActiveTab} onSelectStep={onSelectStep} />
       <StatsSection setActiveTab={setActiveTab} />
       <CTASection setActiveTab={setActiveTab} />
     </div>
@@ -119,7 +125,12 @@ export default function App() {
                 onLogout={logout}
               />
               <main className="flex-1">
-                <HomePage navigate={navigate} />
+                <HomePage
+                  navigate={navigate}
+                  onSelectStep={(operation) =>
+                    navigate('/visualization', { state: { operation } })
+                  }
+                />
               </main>
               <Footer setActiveTab={setActiveTab} onOpenLogin={() => setIsLoginOpen(true)} />
             </>
